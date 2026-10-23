@@ -72,16 +72,10 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "icon": "shell/icon.ico",
-      "signAndEditExecutable": false
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
@@ -93,13 +87,6 @@
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "x64",
             "arm64"
