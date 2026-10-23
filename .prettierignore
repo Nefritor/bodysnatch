@@ -1,0 +1,9 @@
+node_modules
+dist
+release
+data
+coverage
+package-lock.json
+*.min.js
+*.min.css
+.cache

@@ -1,0 +1,91 @@
+{
+  "port": 8180,
+  "certsDir": "data/certs",
+  "servicePrefixes": [
+    "static/resources"
+  ],
+  "roots": [
+    "F:\\test\\application"
+  ],
+  "moduleRoots": {
+    "Telephony_online": "F:\\test\\application"
+  },
+  "sites": [
+    {
+      "id": "site",
+      "enabled": true,
+      "useLocal": true,
+      "files": [
+        {
+          "value": "js",
+          "enabled": true
+        },
+        {
+          "value": "css",
+          "enabled": true
+        }
+      ],
+      "mask": {
+        "prefixes": [
+          {
+            "value": "отсутствует",
+            "enabled": false
+          },
+          {
+            "value": "fix",
+            "enabled": true
+          },
+          {
+            "value": "test",
+            "enabled": true
+          },
+          {
+            "value": "pre-test",
+            "enabled": true
+          },
+          {
+            "value": "dev",
+            "enabled": true
+          },
+          {
+            "value": "rc",
+            "enabled": true
+          },
+          {
+            "value": "zxczxc",
+            "enabled": true,
+            "custom": true
+          }
+        ],
+        "envs": [
+          {
+            "value": "cdn",
+            "enabled": true
+          },
+          {
+            "value": "cdn2",
+            "enabled": true
+          },
+          {
+            "value": "cdn3",
+            "enabled": true
+          }
+        ],
+        "hosts": [
+          {
+            "value": "sbis.ru",
+            "enabled": true
+          },
+          {
+            "value": "saby.ru",
+            "enabled": true
+          }
+        ],
+        "extra": []
+      },
+      "maps": []
+    }
+  ],
+  "passthrough": "browser",
+  "liveReload": false
+}

@@ -1,0 +1,1588 @@
+/**
+ * Стили визарда BodySnatcher.
+ *
+ * Порядок разделов: токены → база → каркас окна → элементы → панели →
+ * модальные окна → свитч → тёмная тема.
+ * Тяжёлые вставки вынесены отдельно: шрифты — fonts.css, знак приложения — brand.css.
+ * Каждый селектор объявлен ровно один раз; переопределений «поверх» больше нет.
+ */
+@import './fonts.css';
+@import './brand.css';
+
+/* ── Токены ───────────────────────────────────────────────────────────────── */
+:root {
+  --ink: #202124;
+  --muted: #5f6368;
+  --line: #dadce0;
+  --soft: #f8f9fa;
+  --soft-2: #f1f3f4;
+  --surface: #f7f8fa;
+  --blue: #1a73e8;
+  --blue-d: #1765cc;
+  --green: #1e8e3e;
+  --green-d: #17753a;
+  --red: #d93025;
+  --shadow: 0 1px 2px rgba(60, 64, 67, 0.08), 0 1px 3px 1px rgba(60, 64, 67, 0.05);
+  --font: 'Open Sans', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Тёмная палитра идёт сразу после :root — при равной специфичности побеждает нижнее правило. */
+[data-theme='dark'] {
+  --ink: #e8eaed;
+  --muted: #9aa0a6;
+  --line: #3c4043;
+  --soft: #202124;
+  --soft-2: #2a2b2e;
+  --surface: #26272a;
+  --blue: #8ab4f8;
+  --blue-d: #aecbfa;
+  --green: #81c995;
+  --green-d: #a8dab5;
+  --red: #f28b82;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* ── База ─────────────────────────────────────────────────────────────────── */
+/* ведём себя как нативное окно: текст не выделяется, картинки не тянутся */
+* {
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+input,
+textarea,
+code,
+.mono {
+  -webkit-user-select: text;
+  user-select: text;
+}
+input,
+textarea {
+  cursor: text;
+}
+body {
+  cursor: default;
+}
+
+html,
+body,
+button,
+input,
+textarea,
+select {
+  font-family: var(--font);
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: #fff;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'tnum';
+}
+
+/* содержимое кнопок всегда по центру: текст, иконка, спиннер */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+::selection {
+  background: #d2e3fc;
+}
+code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12.5px;
+  background: var(--soft-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.mono {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* ── Типографика и утилиты ────────────────────────────────────────────────── */
+h1 {
+  margin: 0 0 6px;
+  font-size: 21px;
+  font-weight: 400;
+  letter-spacing: 0.1px;
+}
+h1.big {
+  font-size: 26px;
+  line-height: 1.35;
+  margin-bottom: 26px;
+}
+h1.medium {
+  font-size: 20px;
+  line-height: 1.2;
+  margin-bottom: 20px;
+}
+h1.flash {
+  color: var(--red);
+}
+p {
+  margin: 6px 0 14px;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12px;
+}
+.warn {
+  color: var(--red);
+}
+.ok-text {
+  color: var(--green-d);
+}
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.note-warn {
+  color: #b26a00;
+  font-size: 12.5px;
+  margin: 10px 0 0;
+}
+.label {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 18px 0 8px;
+}
+.margin-right {
+  margin-right: 8px;
+}
+
+/* ── Каркас окна ──────────────────────────────────────────────────────────── */
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+/* своя шапка окна вместо системной */
+.titlebar {
+  flex: 0 0 auto;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  user-select: none;
+  cursor: default;
+}
+.tb-title {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.tb-buttons {
+  margin-left: auto;
+  display: flex;
+  height: 100%;
+}
+.tb-btn {
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tb-btn:hover {
+  background: var(--soft-2);
+  color: var(--ink);
+}
+.tb-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+
+/* сцена */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 25px 30px;
+  overflow: auto;
+}
+.wrapper {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-grow: 1;
+  width: 100%;
+  animation: card-in 0.22s ease-out;
+}
+.content {
+
+}
+.footer {
+
+}
+.hint-card {
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  background-color: var(--soft-2);
+  gap: 3px;
+  border-radius: 10px;
+  padding: 8px 15px;
+}
+.hint-card-head {
+  font-weight: bold;
+}
+.hint-card-body {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--muted);
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.actions.right {
+  justify-content: flex-end;
+}
+.actions.between {
+  justify-content: space-between;
+}
+/* на рабочем экране разделитель перед «Завершить» не нужен */
+.actions.right.confirm {
+  border-top: none;
+  padding-top: 4px;
+  margin-top: 18px;
+}
+.card.center {
+  text-align: center;
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* подвал окна */
+.appfooter {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 40px 11px;
+  border-top: 1px solid var(--soft-2);
+  background: #fff;
+}
+.appfooter .right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.appfooter .meta {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  justify-content: flex-start;
+}
+
+/* ── Прогресс, спиннер, точки ─────────────────────────────────────────────── */
+.progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--soft-2);
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--blue);
+}
+.spinner {
+  /* без display инлайн-элемент игнорирует ширину/высоту и схлопывается в полоску */
+  display: inline-block;
+  vertical-align: middle;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.75;
+  animation: spin 0.7s linear infinite;
+}
+.spinner.big {
+  width: 26px;
+  height: 26px;
+  border-width: 2.5px;
+  opacity: 0.9;
+}
+/* экран ожидания: крупный индикатор и подпись, чтобы не выглядело заглушкой */
+.waitcard .big {
+  margin-bottom: 18px;
+}
+.waitcard .spinner {
+  color: var(--blue);
+}
+.waitnote {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* точка состояния — индикатор, а не переключатель: заливка, без рамок */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  background: #dadce0;
+}
+.dot.ok {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(30, 142, 62, 0.15);
+}
+.dot.warn {
+  background: #f9ab00;
+}
+.dot.unknown {
+  background: #eceff1;
+}
+.live-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-left: 8px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 3px rgba(30, 142, 62, 0.15);
+}
+.live-dot.paused {
+  background: #dadce0;
+}
+.dot-placeholder {
+  display: inline-block;
+  border-radius: 50%;
+  background: var(--soft-2);
+  border: 1px solid var(--line);
+}
+
+/* ── Плитки браузеров ─────────────────────────────────────────────────────── */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
+  padding-top: 12px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  color: var(--ink);
+  cursor: default;
+}
+.chip:disabled {
+  color: inherit;
+  opacity: 1;
+}
+.chip.clickable {
+  cursor: pointer;
+}
+.chip.clickable:hover {
+  border-color: var(--blue);
+  background: #f8fbff;
+}
+.chip.clickable:active {
+  transform: translateY(1px);
+}
+.bicon {
+  display: block;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+
+/* список браузеров со статусом расширения */
+.blist {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 14px 0 2px;
+}
+.blist.compact {
+  margin: 10px 0 24px;
+  gap: 4px;
+}
+.brow {
+  display: flex;
+  align-items: center;
+  line-height: normal;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.blist.compact .brow {
+  padding: 5px 10px;
+}
+.bname {
+  font-weight: 500;
+}
+.bstate {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.4;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f0fe;
+  color: var(--blue-d);
+  border: 1px solid #d2e3fc;
+  white-space: nowrap;
+}
+
+/* ── Кнопки и ссылки ──────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--blue);
+  font: inherit;
+  font-weight: 500;
+  line-height: 28px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn:hover {
+  background: var(--soft);
+}
+.btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+.btn-icon {
+  align-self: center;
+}
+.btn.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.btn.primary:hover {
+  background: var(--blue-d);
+  border-color: var(--blue-d);
+}
+.btn.launch {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  font-size: 16px;
+  padding: 14px 44px;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.btn.launch:hover {
+  background: var(--green-d);
+  border-color: var(--green-d);
+}
+.btn.danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  font-weight: 600;
+}
+.btn.danger:hover {
+  background: #b3261e;
+  border-color: #b3261e;
+}
+.btn.tiny {
+  min-height: 25px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+/* кнопка копирования не меняет ширину при смене подписи на «скопировано» */
+.btn.copy {
+  padding: 4px 10px;
+  height: 30px;
+  width: 100px;
+  font-size: 12px;
+}
+.btn.shake {
+  animation: shake 0.4s;
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+.link {
+  display: inline;
+  vertical-align: baseline;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--blue);
+  cursor: pointer;
+  text-decoration: none;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+/* ── Поля ввода ───────────────────────────────────────────────────────────── */
+.field {
+  margin: 15px 0 0;
+}
+.field > label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.row input,
+.row .btn {
+  height: 40px;
+}
+input[type='text'],
+input:not([type]) {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12.5px;
+}
+/* в строке «поле + кнопка» поле ниже и с горизонтальными отступами без вертикальных */
+.row input {
+  padding: 0 12px;
+}
+input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+}
+
+/* ── Врезка с инструкцией ─────────────────────────────────────────────────── */
+.inset {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 14px 0 18px;
+}
+.steps {
+  margin: 0;
+  padding-left: 20px;
+}
+.steps li {
+  margin-bottom: 9px;
+}
+.steps li:last-child {
+  margin-bottom: 0;
+}
+.path {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.path code {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.path .btn {
+  min-width: 96px;
+  white-space: nowrap;
+}
+
+/* ── Низ карточки и подтверждение ─────────────────────────────────────────── */
+.confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slide-in 0.22s ease-out;
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.confirm-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 auto 18px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: #e6f4ea;
+  color: var(--green-d);
+  font-weight: 500;
+}
+.more {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.more summary {
+  cursor: pointer;
+}
+.list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+/* подвал карточки: агент и расширение */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--soft-2);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.meta .sep {
+  color: var(--line);
+}
+
+/* ── Панели настройки: папки, модули, маски ───────────────────────────────── */
+.panel {
+  margin-top: 18px;
+}
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.panel-title {
+  font-weight: 600;
+}
+/* кнопки и поиск в заголовке панели — компактные, стоят сразу за заголовком */
+.panel-head .btn {
+  margin: 0;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.panel-head .search {
+  margin: 0;
+  width: 220px;
+  height: 32px;
+  font-size: 13px;
+}
+
+/* папки с кодом */
+.roots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 34px;
+}
+.rootrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  min-height: 40px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.rootrow .path {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rootrow .btn {
+  line-height: 22px;
+}
+
+/* модули */
+.rootgroup + .rootgroup {
+  margin-top: 12px;
+}
+.rootgroup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.rootgroup-head .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.mbadge:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.mbadge.active {
+  background: #e6f4ea;
+  color: var(--green-d);
+  border-color: #ceead6;
+}
+.mbadge.active:hover {
+  color: var(--green-d);
+  border-color: var(--green-d);
+}
+.mbadge.shadowed {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--muted);
+}
+.mbadge.shadowed:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--ink);
+}
+
+/* маска: бейджи значений */
+.opt {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.opt.on {
+  background: #e6f4ea;
+  border-color: #ceead6;
+  color: var(--green-d);
+  font-weight: 500;
+}
+.optwrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.optwrap.removable .opt {
+  padding-right: 22px;
+}
+/* «×» удаления — только у своих значений */
+.opt-x {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.optwrap.removable .opt-x {
+  display: inline-flex;
+}
+.opt-x:hover {
+  background: var(--red);
+  color: #fff;
+}
+.maskrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.masklabel {
+  min-width: 150px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* строка бейджей в одну линию: лишнее уходит в «…», хвост прилипает справа */
+.ovrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ovrow-items {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.ovrow-measure {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  display: flex;
+  gap: 6px;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dots {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--blue);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.dots:hover {
+  background: #e8f0fe;
+  border-color: #d2e3fc;
+}
+.dots svg,
+.add-round svg,
+.add-ok svg,
+.add-cancel svg,
+.opt-x svg,
+.modal-close svg {
+  display: block;
+}
+/* добавление своего значения: круглая кнопка с плюсом и подтверждение/отмена */
+.add-round {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--blue);
+  cursor: pointer;
+}
+.add-round:hover {
+  background: #e8f0fe;
+  border-color: #d2e3fc;
+}
+.add-ok,
+.add-cancel {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+.add-ok {
+  color: var(--green-d);
+}
+.add-cancel {
+  color: var(--muted);
+}
+.add-ok:hover {
+  background: #e6f4ea;
+}
+.add-cancel:hover {
+  background: var(--soft-2);
+}
+.search.add {
+  flex: 0 0 auto;
+  width: 150px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* ── Модальные окна ───────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 17, 20, 0.45);
+  padding: 24px;
+}
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 680px;
+  max-height: 72vh;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+}
+.modal-close:hover {
+  background: var(--soft-2);
+  color: var(--ink);
+}
+.modal-search {
+  padding: 12px 16px 0;
+}
+.modal-search .search {
+  width: 100%;
+  height: 34px;
+  box-sizing: border-box;
+}
+.modal-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+/* окно «все модули»: группы папок столбцом, внутри — перенос плашек */
+.modal-body.stack {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 14px;
+}
+.modal-body.stack .rootgroup + .rootgroup {
+  margin-top: 0;
+}
+
+/* ── Рабочий экран: шапка со свитчем ──────────────────────────────────────── */
+.runhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.runhead .live-dot {
+  margin-left: 0;
+}
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #dadce0;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.switch.on {
+  background: var(--green);
+}
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.switch:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.switch.on .switch-knob {
+  transform: translateX(16px);
+}
+
+/* ── Переключатель темы в подвале ─────────────────────────────────────────── */
+.theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+}
+.theme:hover {
+  background: var(--soft-2);
+  color: var(--ink);
+}
+.theme svg {
+  display: block;
+}
+.theme.to-dark {
+  color: #5f6368;
+}
+.theme.to-light {
+  color: #f9ab00;
+}
+.theme.to-dark svg path,
+.theme.to-dark svg circle,
+.theme.to-dark svg g {
+  fill: #5f6368;
+  stroke: #5f6368;
+}
+.theme.to-light svg path,
+.theme.to-light svg circle,
+.theme.to-light svg g {
+  fill: #f9ab00;
+  stroke: #f9ab00;
+}
+
+/* ── Тёмная тема ──────────────────────────────────────────────────────────── */
+[data-theme='dark'] .app,
+[data-theme='dark'] .titlebar,
+[data-theme='dark'] .appfooter {
+  background: #1f2023;
+  color: var(--ink);
+}
+[data-theme='dark'] .stage,
+[data-theme='dark'] .card {
+  background: #1f2023;
+  color: var(--ink);
+}
+[data-theme='dark'] .chip,
+[data-theme='dark'] .opt,
+[data-theme='dark'] .mbadge.shadowed,
+[data-theme='dark'] .btn,
+[data-theme='dark'] input,
+[data-theme='dark'] .search.add,
+[data-theme='dark'] .dots,
+[data-theme='dark'] .add-round,
+[data-theme='dark'] .add-ok,
+[data-theme='dark'] .add-cancel,
+[data-theme='dark'] .theme,
+[data-theme='dark'] .code {
+  background: #2a2b2e;
+  color: var(--ink);
+  border-color: var(--line);
+}
+[data-theme='dark'] .inset,
+[data-theme='dark'] .empty,
+[data-theme='dark'] .brow,
+[data-theme='dark'] .rootrow {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+[data-theme='dark'] .code {
+  cursor: text;
+}
+[data-theme='dark'] .code::selection {
+  color: var(--soft);
+  background-color: var(--ink);
+}
+[data-theme='dark'] .btn.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #202124;
+}
+[data-theme='dark'] .btn.primary:hover {
+  background: var(--blue-d);
+  border-color: var(--blue-d);
+}
+[data-theme='dark'] .badge {
+  background: #2d3440;
+  border-color: #3c4657;
+  color: var(--blue);
+}
+[data-theme='dark'] .opt.on,
+[data-theme='dark'] .mbadge.active {
+  background: #2d3b30;
+  border-color: #3c5241;
+  color: var(--green-d);
+}
+[data-theme='dark'] .dot.off {
+  background: #5f6368;
+}
+[data-theme='dark'] .dot.unknown {
+  background: #414449;
+}
+[data-theme='dark'] .tb-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+[data-theme='dark'] h1,
+[data-theme='dark'] h2,
+[data-theme='dark'] .tb-title,
+[data-theme='dark'] .bname,
+[data-theme='dark'] .opt,
+[data-theme='dark'] .mbadge,
+[data-theme='dark'] .mono,
+[data-theme='dark'] code,
+[data-theme='dark'] .bstate,
+[data-theme='dark'] .bver,
+[data-theme='dark'] .btn,
+[data-theme='dark'] .link {
+  color: var(--ink);
+}
+[data-theme='dark'] .muted,
+[data-theme='dark'] .bstate,
+[data-theme='dark'] .bver,
+[data-theme='dark'] .hint {
+  color: var(--muted);
+}
+[data-theme='dark'] .live-dot {
+  background: #81c995;
+}
+[data-theme='dark'] .live-dot.paused {
+  background: #5f6368;
+}
+[data-theme='dark'] .btn.launch {
+  background: #2d5a3a;
+  border-color: #3c6b47;
+  color: #d7f0dd;
+}
+[data-theme='dark'] .btn.launch:hover {
+  background: #356a44;
+}
+[data-theme='dark'] .confirm-ok {
+  background: #25382b;
+  color: #a8dab5;
+}
+[data-theme='dark'] .btn.danger {
+  background: #8c1d18;
+  border-color: #a3231d;
+  color: #f6d5d2;
+}
+[data-theme='dark'] .btn.danger:hover {
+  background: #a3231d;
+  border-color: #b3261e;
+}
+/* поля ввода: у input светлый фон задан выше, поэтому переопределяем явно */
+[data-theme='dark'] input,
+[data-theme='dark'] textarea,
+[data-theme='dark'] .field input,
+[data-theme='dark'] .row input,
+[data-theme='dark'] .search,
+[data-theme='dark'] .search.add {
+  background: #2a2b2e;
+  color: var(--ink);
+  border-color: var(--line);
+}
+[data-theme='dark'] input::placeholder,
+[data-theme='dark'] textarea::placeholder {
+  color: #80868b;
+}
+[data-theme='dark'] input:focus,
+[data-theme='dark'] .row input:focus {
+  border-color: var(--blue);
+}
+[data-theme='dark'] .modal {
+  background: #232528;
+  border-color: var(--line);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+[data-theme='dark'] .modal-close {
+  background: #2a2b2e;
+}
+[data-theme='dark'] .theme.to-dark {
+  color: #9aa0a6;
+}
+[data-theme='dark'] .theme.to-light {
+  color: #fdd663;
+}
+[data-theme='dark'] .theme.to-dark svg path,
+[data-theme='dark'] .theme.to-dark svg circle,
+[data-theme='dark'] .theme.to-dark svg g {
+  fill: #9aa0a6;
+  stroke: #9aa0a6;
+}
+[data-theme='dark'] .theme.to-light svg path,
+[data-theme='dark'] .theme.to-light svg circle,
+[data-theme='dark'] .theme.to-light svg g {
+  fill: #fdd663;
+  stroke: #fdd663;
+}
+[data-theme='dark'] .switch {
+  background: #5f6368;
+}
+[data-theme='dark'] .switch.on {
+  background: #34a853;
+}
+
+/* логотип в своей шапке окна */
+.tb-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+/* индикатор состояния системного прокси */
+.dot.dot-on {
+  background: #1e8e3e;
+  box-shadow: 0 0 0 3px rgba(30, 142, 62, 0.15);
+}
+.dot.dot-off {
+  background: #c62828;
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
+}
+
+/* шаги мастера: кликабельные для возврата назад */
+.step-btn {
+  /* только кликабельность: вид остаётся как у обычного бейджа */
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.step-btn:disabled {
+  cursor: default;
+}
+
+/* бейдж состояния прокси */
+.badge.badge-ok {
+  background: #e6f4ea;
+  color: #1e8e3e;
+  border-color: #cbe2d2;
+}
+.badge.badge-bad {
+  background: #fce8e6;
+  color: #c62828;
+  border-color: #fdd7d3;
+}
+
+/* ── Заголовок с бейджем справа ─────────────────────────────────────────── */
+.head-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.head-row h1 {
+  margin: 0;
+}
+
+/* ── Рабочий экран ──────────────────────────────────────────────────────── */
+.work-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.work-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 14px;
+}
+.work-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Спойлеры ───────────────────────────────────────────────────────────── */
+.spoiler-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 4px 12px 8px;
+}
+.spoiler-bottom {
+  border-top: 1px solid #e5e7eb;
+  margin: 0 -40px;
+  padding: 5px 40px 8px;
+}
+.spoiler-body-fixed {
+  height: 460px;
+  overflow: hidden;
+}
+.spoiler-count {
+  margin-left: 8px;
+  font-weight: 400;
+  color: #6b7280;
+}
+.spoiler-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blue-d, #1a56b8);
+  cursor: pointer;
+  text-align: left;
+  justify-content: flex-start;
+}
+.spoiler-caret {
+  display: flex;
+  line-height: 17px;
+  justify-content: center;
+  transition: transform 0.15s ease;
+  font-size: 18px;
+  width: 20px;
+  height: 20px;
+}
+.spoiler-caret.open {
+  transform: rotate(90deg);
+}
+.spoiler-body {
+  padding: 8px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Таблица запросов ───────────────────────────────────────────────────── */
+.q-grid {
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0 8px;
+}
+.q-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 13px;
+}
+.q-head,
+.q-row {
+  display: grid;
+  grid-template-columns: 74px 72px 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid #f0f1f3;
+  font-size: 12px;
+}
+.q-head {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  color: #6b7280;
+  font-weight: 600;
+  z-index: 1;
+}
+.q-head > span,
+.q-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.q-row .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.q-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #111827;
+}
+.input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #d5d8dd;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+/* рабочий экран занимает всё окно, дивайдер — во всю ширину */
+.stage-work {
+  align-items: flex-start;
+  padding: 0;
+  overflow: auto;
+}
+.stage-work .work-shell {
+  padding: 20px 40px 0;
+  box-sizing: border-box;
+}
+/* только список папок скроллится, кнопка «Добавить папку» — под ним */
+.roots-scroll {
+  height: 181px;
+  padding: 6px; 
+  border: 1px solid #dfdfdf;
+  border-radius: 8px;
+  overflow: auto;
+  transition: background-color .5s ease;
+}
+.roots-scroll.empty {
+  border: 1px dashed var(--line);
+  background: #f1f3f4;
+  color: var(--muted);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.roots-add {
+  margin-left: 6px;
+  margin-top: -36px;
+  width: fit-content;
+}
+.roots-add .btn {
+  box-shadow: var(--shadow);
+}

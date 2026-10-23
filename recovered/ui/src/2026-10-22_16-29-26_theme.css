@@ -1,0 +1,302 @@
+/**
+ * Дизайн-система BodySnatch: токены + база.
+ *
+ * Тема = семейство (`data-theme`: neutral | slate | sand | ink | stone)
+ * плюс режим (`data-mode`: light | dark). Оба атрибута ставятся на <html>,
+ * поэтому все утилиты Tailwind переключаются без перерисовки компонентов.
+ */
+@import "./fontfaces.css";
+@import "./fonts.css";
+@import "./brand.css";
+@import "tailwindcss";
+
+/* ── Токены, которые меняются темой ───────────────────────────────────────── */
+@theme inline {
+  --color-ink: var(--c-ink);
+  --color-ink-soft: var(--c-ink-soft);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-ink-subtle: var(--c-ink-subtle);
+
+  --color-canvas: var(--c-bg2);
+  --color-tint-a: var(--c-bg1);
+  --color-tint-b: var(--c-bg1);
+  --color-tint-c: var(--c-bg2);
+
+  --color-glass: var(--c-glass);
+  --color-glass-strong: var(--c-glass-strong);
+  --color-glass-line: var(--c-glass-line);
+  --color-line: var(--c-hair);
+
+  --color-brand: var(--c-accent);
+  --color-brand-deep: var(--c-accent-deep);
+  --color-brand-soft: var(--c-accent-soft);
+
+  --color-field: var(--c-field);
+  --color-field-hover: var(--c-field-hover);
+  --color-hover: var(--c-hover);
+
+  /* непрозрачная поверхность: модалки, дропдауны */
+  --color-surface: var(--c-surface);
+  --color-surface-line: var(--c-surface-line);
+
+  /* семантические цвета зависят от темы */
+  --color-good: var(--c-good);
+  --color-good-soft: var(--c-good-soft);
+  --color-bad: var(--c-bad);
+  --color-bad-soft: var(--c-bad-soft);
+  --color-warn: var(--c-warn);
+  --color-warn-soft: var(--c-warn-soft);
+}
+
+/* ── Постоянные токены: размеры, радиусы, шрифты, тени ────────────────────── */
+@theme {
+  --color-violet: #7c5cf5;
+
+  --radius-window: 8px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-panel: 14px;
+  --radius-btn: 10px;
+  --radius-input: 10px;
+  --radius-pill: 999px;
+
+  --spacing: 4px;
+
+  --font-ui: "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+
+  --shadow-matte: 0 10px 24px rgb(20 26 40 / 8%), 0 1px 2px rgb(20 26 40 / 5%);
+  --shadow-glass: 0 10px 24px rgb(20 26 40 / 8%), 0 1px 2px rgb(20 26 40 / 5%);
+}
+
+/* ── Светлый режим: значения по умолчанию ─────────────────────────────────── */
+:root {
+  --c-ink: #10131a;
+  --c-ink-soft: #475063;
+  --c-ink-muted: #6b7280;
+  --c-ink-subtle: #98a2b3;
+
+  --c-bg1: #f8f9fb;
+  --c-bg2: #eff1f4;
+
+  --c-glass: rgb(255 255 255 / 72%);
+  --c-glass-strong: rgb(255 255 255 / 88%);
+  --c-glass-line: rgb(17 24 39 / 12%);
+  --c-hair: rgb(17 24 39 / 8%);
+  --c-field: rgb(255 255 255 / 64%);
+  --c-field-hover: rgb(255 255 255 / 94%);
+  --c-row-hover: rgb(17 24 39 / 6%);
+  --c-hover: rgb(17 24 39 / 7%);
+  --c-surface: #ffffff;
+  --c-surface-line: rgb(17 24 39 / 10%);
+  --c-good: #17864a;
+  --c-good-soft: rgb(23 134 74 / 12%);
+  --c-bad: #cf2f36;
+  --c-bad-soft: rgb(207 47 54 / 10%);
+  --c-warn: #b45309;
+  --c-warn-soft: rgb(180 83 9 / 12%);
+  --c-scrim: rgb(24 28 36 / 28%);
+
+  --c-accent: #2f6fed;
+  --c-accent-deep: #2457c9;
+  --c-accent-soft: rgb(47 111 237 / 12%);
+  --c-accent-ink: #fff;
+
+  --glass-blur: 26px;
+  --glass-saturate: 112%;
+}
+
+/* ── Семейства (светлые) ──────────────────────────────────────────────────── */
+[data-theme="slate"] {
+  --c-bg1: #f3f5f8;
+  --c-bg2: #e5e9ef;
+  --c-accent: #334155;
+  --c-accent-deep: #1f2937;
+  --c-accent-soft: rgb(51 65 85 / 12%);
+}
+
+[data-theme="sand"] {
+  --c-bg1: #faf8f4;
+  --c-bg2: #eee9e0;
+  --c-accent: #8a6a3b;
+  --c-accent-deep: #6f5330;
+  --c-accent-soft: rgb(138 106 59 / 14%);
+}
+
+[data-theme="ink"] {
+  --c-bg1: #f6f7f9;
+  --c-bg2: #e7e9ee;
+  --c-accent: #1d4ed8;
+  --c-accent-deep: #1740ad;
+  --c-accent-soft: rgb(29 78 216 / 12%);
+}
+
+[data-theme="stone"] {
+  --c-bg1: #f5f4f1;
+  --c-bg2: #e8e6e1;
+  --c-accent: #57534e;
+  --c-accent-deep: #3f3b37;
+  --c-accent-soft: rgb(87 83 78 / 12%);
+}
+
+/* ── Тёмный режим ─────────────────────────────────────────────────────────── */
+[data-mode="dark"] {
+  --c-ink: #e9ecf1;
+  --c-ink-soft: #c3c9d4;
+  --c-ink-muted: #949ba7;
+  --c-ink-subtle: #767d89;
+
+  --c-bg1: #16191d;
+  --c-bg2: #0e1013;
+
+  --c-glass: rgb(255 255 255 / 8%);
+  --c-glass-strong: rgb(255 255 255 / 12%);
+  --c-glass-line: rgb(255 255 255 / 14%);
+  --c-hair: rgb(255 255 255 / 9%);
+  --c-field: rgb(255 255 255 / 7%);
+  --c-field-hover: rgb(255 255 255 / 16%);
+  --c-row-hover: rgb(255 255 255 / 8%);
+  --c-hover: rgb(255 255 255 / 10%);
+  --c-surface: #1b1f25;
+  --c-surface-line: rgb(255 255 255 / 14%);
+  --c-good: #7fe0a6;
+  --c-good-soft: rgb(127 224 166 / 16%);
+  --c-bad: #ff9ba1;
+  --c-bad-soft: rgb(255 155 161 / 16%);
+  --c-warn: #f3c07b;
+  --c-warn-soft: rgb(243 192 123 / 16%);
+  --c-scrim: rgb(0 0 0 / 55%);
+
+  --c-accent: #7aa2ff;
+  --c-accent-deep: #5b86f0;
+  --c-accent-soft: rgb(122 162 255 / 18%);
+  --c-accent-ink: #10131a;
+
+  --shadow-matte: 0 14px 32px rgb(0 0 0 / 45%);
+  --shadow-glass: 0 14px 32px rgb(0 0 0 / 45%);
+}
+
+[data-mode="dark"][data-theme="slate"] {
+  --c-bg1: #151b23;
+  --c-bg2: #0d1219;
+  --c-accent: #cbd5e1;
+  --c-accent-deep: #aab7c8;
+  --c-accent-soft: rgb(203 213 225 / 16%);
+}
+
+[data-mode="dark"][data-theme="sand"] {
+  --c-bg1: #1a1712;
+  --c-bg2: #12100c;
+  --c-accent: #dcc39c;
+  --c-accent-deep: #c3a77c;
+  --c-accent-soft: rgb(220 195 156 / 16%);
+}
+
+[data-mode="dark"][data-theme="ink"] {
+  --c-bg1: #12161d;
+  --c-bg2: #0b0d11;
+  --c-accent: #a9b8d6;
+  --c-accent-deep: #8b9dbc;
+  --c-accent-soft: rgb(169 184 214 / 16%);
+}
+
+[data-mode="dark"][data-theme="stone"] {
+  --c-bg1: #161514;
+  --c-bg2: #0f0e0d;
+  --c-accent: #d6d3d1;
+  --c-accent-deep: #b9b5b2;
+  --c-accent-soft: rgb(214 211 209 / 16%);
+}
+
+/* ── База ─────────────────────────────────────────────────────────────────── */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html,
+  body {
+    margin: 0;
+    font-family: var(--font-ui);
+    color: var(--c-ink);
+    cursor: default;
+  }
+
+  body {
+    background:
+      radial-gradient(900px 560px at 20% -10%, var(--c-bg1), transparent 62%),
+      linear-gradient(168deg, var(--c-bg1), var(--c-bg2));
+    background-attachment: fixed;
+  }
+
+  /* зерно: без него матовое стекло выглядит как простая плашка */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  [data-mode="dark"] body::after {
+    opacity: 0.06;
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+    /* скругление как у окна: даже кадр перерисовки не даёт квадратный угол */
+    border-radius: var(--radius-window);
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: var(--radius-pill);
+    background-clip: content-box;
+    background-color: rgb(127 137 153 / 35%);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(127 137 153 / 55%);
+  }
+
+  /* подсветка поиска */
+  mark {
+    background: rgb(250 204 21 / 35%);
+    color: inherit;
+    border-radius: 3px;
+  }
+
+  [data-mode="dark"] mark {
+    background: rgb(250 204 21 / 30%);
+    color: #fff9e6;
+  }
+
+  ::selection {
+    background: var(--c-accent-soft);
+  }
+
+  /* по Tab не подсвечиваем: интерфейс управляется мышью */
+  *:focus,
+  *:focus-visible {
+    outline: none !important;
+    box-shadow: none;
+  }
+
+  /* клик по кнопкам должен ощущаться кликабельным */
+  button:not(:disabled),
+  [role="switch"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

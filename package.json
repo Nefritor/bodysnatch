@@ -1,0 +1,52 @@
+{
+  "name": "bodysnatch-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "BodySnatch Desktop — подмена JS/CSS сайта локальными файлами через локальный MITM-прокси",
+  "scripts": {
+    "dev": "node scripts/dev-electron.mjs",
+    "dev:ui": "vite",
+    "build": "npm run build:ui",
+    "build:ui": "vite build",
+        "package": "node scripts/package-electron.mjs",
+    "release": "npm run build && npm run package",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:css": "stylelint \"ui/src/**/*.css\"",
+    "lint:css:fix": "stylelint \"ui/src/**/*.css\" --fix",
+    "lint": "npm run typecheck && npm run format:check && npm run lint:css",
+    "test": "node scripts/test.mjs",
+    "test:all": "node scripts/test.mjs --all",
+    "test:slow": "node scripts/test.mjs --all --slow",
+    "test:list": "node scripts/test.mjs --list",
+    "start": "node proxy/src/main.mjs",
+        "shell": "electron shell/main.cjs",
+    "shell:dev": "electron shell/main.cjs --dev"
+  },
+  "dependencies": {
+    "node-forge": "^1.3.1"
+  },
+  "devDependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource-variable/onest": "^5.3.1",
+    "@fontsource-variable/rubik": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^45.0.0",
+    "prettier": "^3.9.10",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
