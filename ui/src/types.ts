@@ -79,6 +79,8 @@ export type Snapshot = {
 };
 
 export type LogEntry = {
+  /** порядковый номер записи: стабильный ключ строки */
+  id?: number;
   t: string;
   via: string;
   status: number;

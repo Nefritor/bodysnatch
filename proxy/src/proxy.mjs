@@ -79,6 +79,7 @@ export function createProxy({
   const logs = [];
   const state = { enabled };
   const hits = { local: 0, remote: 0 };
+  let logSeq = 0;
   const sse = new Set();
   let ownPort = 0;
 
@@ -93,7 +94,7 @@ export function createProxy({
   };
 
   const record = (entry) => {
-    const line = { t: new Date().toISOString().slice(11, 23), ...entry };
+    const line = { id: ++logSeq, t: new Date().toISOString().slice(11, 23), ...entry };
     logs.push(line);
     if (logs.length > LOG_CAP + 100) logs.splice(0, logs.length - LOG_CAP);
     log(`${line.via} ${line.status} ${line.url}${line.note ? ' — ' + line.note : ''}`);

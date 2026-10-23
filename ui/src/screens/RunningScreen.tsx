@@ -34,7 +34,13 @@ const tailAfterModule = (file: string, module: string) => {
 };
 
 /** Строка таблицы: фиксированные первые три колонки, последняя — по остатку. */
-const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-2';
+const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-3';
+
+/** Высота раскрытых блоков: окно подгоняется под них (см. change). */
+const RULES_H = 590;
+const QUERIES_H = 260;
+/** Пауза между командой окну «расти» и перерисовкой содержимого: иначе кадр рисуется в тесном окне. */
+const GROW_DELAY_MS = 90;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
@@ -62,21 +68,37 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     const q = query.trim().toLowerCase();
     const filtered = q
       ? mirrored.filter((e) =>
-        `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
-          .toLowerCase()
-          .includes(q),
-      )
+          `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
+            .toLowerCase()
+            .includes(q),
+        )
       : mirrored;
     return filtered.slice(0, 100);
   }, [log, query, filter]);
 
-  useEffect(() => {
-    const sizes = STEPS.find(({ key }) => key === Step.Work)?.size;
-    if (sizes) {
-      const h = sizes.h + (rulesOpen ? 590 : 0) + (queriesOpen ? 260 : 0);
-      api.shell('resize', { w: sizes.w, h });
+  const work = STEPS.find(({ key }) => key === Step.Work)?.size ?? { w: 600, h: 222 };
+  const resizeTo = (rules: boolean, queries: boolean) =>
+    api.shell('resize', { w: work.w, h: work.h + (rules ? RULES_H : 0) + (queries ? QUERIES_H : 0) });
+
+  // Раскрытие без мигания: сначала окно растёт, и только потом рисуется содержимое;
+  // при сворачивании — наоборот. Так блок не рисуется в окне, которое ему ещё мало.
+  const change = (rules: boolean, queries: boolean) => {
+    const grow = (rules && !rulesOpen) || (queries && !queriesOpen);
+    const apply = () => {
+      setRulesOpen(rules);
+      setQueriesOpen(queries);
+    };
+    if (grow && api.hasNativeShell()) {
+      resizeTo(rules, queries);
+      window.setTimeout(apply, GROW_DELAY_MS);
+    } else {
+      apply();
+      resizeTo(rules, queries);
     }
-  }, [rulesOpen, queriesOpen]);
+  };
+
+  // начальный размер рабочего экрана
+  useEffect(() => resizeTo(false, false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const caret = (open: boolean) => (
     <IconChevron size={14} className={cn('shrink-0 text-brand transition-transform', open && 'rotate-90')} />
@@ -106,23 +128,24 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
 
       <section
         className={cn(
-          'rounded-window border border-glass-line bg-nested px-4 py-2 shadow-glass transition-colors',
+          'rounded-window border border-glass-line bg-nested px-4 py-2 shadow-glass',
           'backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)',
-          !rulesOpen && 'cursor-pointer hover:bg-hover',
         )}
-        onClick={rulesOpen ? undefined : () => setRulesOpen(true)}
       >
         <button
           type="button"
-          className="flex w-full items-center justify-start gap-2 rounded-sm px-1 py-1.5 text-left text-[15px] font-semibold text-brand transition-colors"
-          onClick={() => setRulesOpen((v) => !v)}
+          className={cn(
+            '-mx-1 flex w-[calc(100%+8px)] items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-left',
+            'text-[15px] font-semibold text-brand hover:bg-hover',
+          )}
+          onClick={() => change(!rulesOpen, queriesOpen)}
           aria-expanded={rulesOpen}
         >
           {caret(rulesOpen)}
           Правила подмены
         </button>
         {rulesOpen ? (
-          <div className="h-[590px] pt-2">
+          <div className="pt-2" style={{ height: RULES_H }}>
             <div className="h-full">{rulesSlot}</div>
           </div>
         ) : null}
@@ -130,17 +153,18 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
 
       <section
         className={cn(
-          'border border-b-0 border-glass-line bg-nested shadow-glass transition-colors',
+          'border border-b-0 border-glass-line bg-nested shadow-glass',
           'backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)',
-          'mt-auto px-4 pt-2 pb-4 -ml-[11px] w-[calc(100%+22px)]',
-          !queriesOpen && 'cursor-pointer hover:bg-hover',
+          'mt-auto -ml-[11px] w-[calc(100%+22px)] px-4 pt-2 pb-4',
         )}
-        onClick={queriesOpen ? undefined : () => setQueriesOpen(true)}
       >
         <button
           type="button"
-          className="flex w-full items-center justify-start gap-2 rounded-sm px-1 py-1.5 text-left text-[15px] font-semibold text-brand transition-colors"
-          onClick={() => setQueriesOpen((v) => !v)}
+          className={cn(
+            '-mx-1 flex w-[calc(100%+8px)] items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-left',
+            'text-[15px] font-semibold text-brand hover:bg-hover',
+          )}
+          onClick={() => change(rulesOpen, !queriesOpen)}
           aria-expanded={queriesOpen}
         >
           {caret(queriesOpen)}
@@ -153,7 +177,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
             <div className="flex items-center gap-2">
               <Input
                 type="search"
-                placeholder="Поиск по времени, статусу, модулю или пути"
+                placeholder="Поиск по журналу"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -171,7 +195,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                     aria-pressed={filter === key}
                     onClick={() => setFilter(key)}
                     className={cn(
-                      'rounded-pill border px-2.5 py-1 text-xs transition-colors',
+                      'rounded-pill border px-2.5 py-1 text-xs',
                       filter === key
                         ? 'border-brand/25 bg-brand-soft font-semibold text-brand'
                         : 'border-glass-line bg-field text-ink-muted hover:bg-glass-strong',
@@ -181,23 +205,31 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                   </button>
                 ))}
               </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="shrink-0"
+                onClick={onClearLog}
+                disabled={log.length === 0}
+                title="Очистить журнал"
+              >
+                <IconClose size={11} />
+                Очистить
+              </Button>
             </div>
 
-            {rows.length === 0 ? (
-              <div className="grid h-[200px] place-items-center rounded-md border border-glass-line bg-nested text-xs text-ink-muted backdrop-blur-(--glass-blur)">
-                Пусто
-              </div>
-            ) : (
-              <div className="relative">
-                {rows.length > 0 ? (
-                  <div className="absolute top-0.75 right-3 z-20">
-                    <Button size="round" variant="secondary" onClick={onClearLog} title="Очистить журнал">
-                      <IconClose size={12} />
-                    </Button>
-                  </div>
-                ) : null}
-                <div className="h-[200px] overflow-auto rounded-md border border-glass-line bg-nested px-3 backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)">
-                  <div className={cn(ROW, 'sticky top-0 z-10 py-1.5 text-xs font-semibold text-ink-muted')}>
+            <div className="h-[200px] overflow-auto rounded-md border border-glass-line bg-nested">
+              {rows.length === 0 ? (
+                <div className="grid h-full place-items-center text-xs text-ink-muted">Пусто</div>
+              ) : (
+                <>
+                  <div
+                    className={cn(
+                      ROW,
+                      'sticky top-0 z-10 border-b border-glass-line bg-surface py-1.5',
+                      'text-[11px] font-semibold tracking-wide text-ink-muted uppercase',
+                    )}
+                  >
                     <span>Время</span>
                     <span>Статус</span>
                     <span>{filter === 'mirror' ? 'Модуль' : 'Тип'}</span>
@@ -205,8 +237,8 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                   </div>
                   {rows.map((e, i) => (
                     <div
-                      key={`${e.t}-${e.file}-${i}`}
-                      className={cn(ROW, 'border-b border-line py-1 text-xs transition-colors last:border-0')}
+                      key={e.id ?? `${e.t}-${i}`}
+                      className={cn(ROW, 'border-b border-line py-1 text-xs last:border-0')}
                     >
                       <span className="truncate text-ink-muted">{highlight(String(e.t).slice(0, 8), query)}</span>
                       <span>
@@ -222,9 +254,9 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                       </span>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
         ) : null}
       </section>
