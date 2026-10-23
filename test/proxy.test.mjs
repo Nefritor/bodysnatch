@@ -34,7 +34,9 @@ test('подмена: файл из папки вместо серверного
     assert.equal(r.headers['cache-control'], 'no-cache');
     assert.equal(t.site.seen.length, 0, 'на сервер запрос не ушёл');
 
-    const again = await viaProxy(t.port, `http://${HOST}/mod/Page.js`, { headers: { 'if-none-match': r.headers.etag } });
+    const again = await viaProxy(t.port, `http://${HOST}/mod/Page.js`, {
+      headers: { 'if-none-match': r.headers.etag },
+    });
     assert.equal(again.status, 304);
 
     const head = await viaProxy(t.port, `http://${HOST}/mod/Page.js`, { method: 'HEAD' });
@@ -90,7 +92,11 @@ test('тело POST доходит до сервера потоком', async ()
     req.on('end', () => res.end('ok'));
   });
   try {
-    const r = await viaProxy(t.port, `http://${HOST}/mod/save`, { method: 'POST', body: 'payload', headers: { 'content-length': '7' } });
+    const r = await viaProxy(t.port, `http://${HOST}/mod/save`, {
+      method: 'POST',
+      body: 'payload',
+      headers: { 'content-length': '7' },
+    });
     assert.equal(r.body, 'ok');
     assert.equal(got, 'payload');
   } finally {
@@ -206,15 +212,18 @@ test('live reload: в HTML вставляется скрипт, события �
     assert.equal(Number(page.headers['content-length']), Buffer.byteLength(page.body));
 
     const message = await new Promise((resolve, reject) => {
-      const req = http.request({ host: '127.0.0.1', port: t.port, path: `http://${HOST}/__bodysnatch/events`, headers: { host: HOST } }, (res) => {
-        res.on('data', (c) => {
-          const text = String(c);
-          if (text.startsWith('data:')) {
-            req.destroy();
-            resolve(text);
-          } else t.proxy.notifyFilesChanged(['a.css']);
-        });
-      });
+      const req = http.request(
+        { host: '127.0.0.1', port: t.port, path: `http://${HOST}/__bodysnatch/events`, headers: { host: HOST } },
+        (res) => {
+          res.on('data', (c) => {
+            const text = String(c);
+            if (text.startsWith('data:')) {
+              req.destroy();
+              resolve(text);
+            } else t.proxy.notifyFilesChanged(['a.css']);
+          });
+        },
+      );
       req.on('error', (e) => (e.code === 'ECONNRESET' ? null : reject(e)));
       req.end();
     });

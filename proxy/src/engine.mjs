@@ -55,7 +55,7 @@ export async function createEngine({
   const config = loadConfig(configPath, defaultConfigPath);
   const basePort = port || Number(config.port) || 8180;
   config.port = basePort;
-  const ca = ensureCA(certsDir, { protector });
+  const ca = await ensureCA(certsDir, { protector });
 
   const files = new FileCache({
     onChange: (names) => {

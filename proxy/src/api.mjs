@@ -10,7 +10,10 @@ import { buildRoots, buildModules, firstSite } from './scan.mjs';
 import { touchConfig } from './rules.mjs';
 
 const ok = (json = {}) => ({ status: 200, json: { ok: true, ...json } });
-const fail = (message, status = 200, extra = {}) => ({ status, json: { ok: false, error: message, message, ...extra } });
+const fail = (message, status = 200, extra = {}) => ({
+  status,
+  json: { ok: false, error: message, message, ...extra },
+});
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -25,7 +28,10 @@ const TYPES = {
 };
 
 /** Хост-имя без порта из заголовка Host. */
-export const hostnameOf = (host) => String(host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+export const hostnameOf = (host) =>
+  String(host || '')
+    .replace(/:\d+$/, '')
+    .replace(/^\[|\]$/g, '');
 
 export function makeApi(engine) {
   const { config, proxy, ca, platform } = engine;
@@ -33,7 +39,12 @@ export function makeApi(engine) {
   /** Статика собранного интерфейса (режим без Electron). */
   function serveStatic(pathname) {
     const dist = engine.distDir;
-    if (!dist || !fs.existsSync(dist)) return { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' }, body: 'интерфейс не собран: npm run build:ui' };
+    if (!dist || !fs.existsSync(dist))
+      return {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+        body: 'интерфейс не собран: npm run build:ui',
+      };
     let rel;
     try {
       rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
@@ -46,7 +57,10 @@ export function makeApi(engine) {
     const file = inside && fs.existsSync(abs) && fs.statSync(abs).isFile() ? abs : path.join(root, 'index.html');
     return {
       status: 200,
-      headers: { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' },
+      headers: {
+        'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+        'cache-control': 'no-store',
+      },
       body: fs.readFileSync(file),
     };
   }
@@ -91,7 +105,13 @@ export function makeApi(engine) {
         certPath: ca.certPath,
         created: ca.created,
       },
-      systemProxy: { enabled: ours, ours, pacUrl: sys.pacUrl, server: sys.manual.enabled ? sys.manual.server : '', override: '' },
+      systemProxy: {
+        enabled: ours,
+        ours,
+        pacUrl: sys.pacUrl,
+        server: sys.manual.enabled ? sys.manual.server : '',
+        override: '',
+      },
     };
   }
 

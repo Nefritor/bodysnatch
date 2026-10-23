@@ -66,11 +66,6 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
   };
 
   const open = async (target: string) => {
-    // в окне открываем через хост (ShellExecute) — надёжнее, чем spawn из прокси
-    if (api.hasNativeShell()) {
-      api.shell('openpath', { path: target });
-      return;
-    }
     await api.open('root', { root: target }).catch(() => null);
   };
 
@@ -92,7 +87,9 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
 
       <div className="p-2 border border-glass-line bg-tint-c border-dashed rounded-md h-37.5 overflow-auto">
         {roots.length === 0 ? (
-          <div className="flex items-center justify-center text-sm text-ink-muted h-full">Папки с кодом не добавлены</div>
+          <div className="flex items-center justify-center text-sm text-ink-muted h-full">
+            Папки с кодом не добавлены
+          </div>
         ) : (
           <div className="flex flex-col gap-1.5">
             {roots.map((r) => (

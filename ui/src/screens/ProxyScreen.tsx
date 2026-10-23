@@ -22,11 +22,11 @@ export const ProxyScreen = ({ snap, busy, notice, onEnable, onDisable, onNext }:
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold text-ink">Прокси</h1>
-          <Badge tone={ours ? 'ok' : 'bad'}>{ours ? `слушаем ${address}` : 'выключен'}</Badge>
+          <Badge tone={ours ? 'ok' : 'bad'}>{ours ? `PAC · ${address}` : 'выключен'}</Badge>
         </div>
         <p className="text-sm text-ink-muted">
-          Подмена идёт через системный прокси. Включите его — и браузеры начнут получать локальные файлы вместо
-          серверных.
+          Браузеры получают от системы PAC-файл и отправляют на прокси только сайты из ваших масок, остальной трафик не
+          затрагивается. Включите прокси — и они начнут получать локальные файлы вместо серверных.
         </p>
 
         {notice ? (

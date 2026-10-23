@@ -3,7 +3,7 @@
  * сертификат → прокси → правила → работа (свитч выключен, пока его не включат).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, useState1s } from './api.js';
+import { api, useBodysnatch } from './api.js';
 import type { MaskOption, SiteMask } from './types.js';
 import { TitleBar } from './components/index.js';
 import { CertScreen, ProxyScreen, RulesScreen, RunningScreen } from './screens/index.js';
@@ -11,7 +11,7 @@ import { STEPS, Step } from './constants.js';
 import { cn } from './ui/cn.js';
 
 export function App() {
-  const { state, error, refresh } = useState1s(1200);
+  const { state, error, refresh, log, clearLog } = useBodysnatch();
   const [step, setStep] = useState<Step>(() => {
     try {
       const screen = new URLSearchParams(window.location.search).get('screen');
@@ -47,7 +47,7 @@ export function App() {
     try {
       const res = await api.proxyOn();
       if (res && res.ok === false) {
-        setMessage(res.cancelled ? 'запрос прав отменён' : res.error || 'не удалось включить прокси');
+        setMessage(res.error || 'не удалось включить прокси');
       }
       await refresh();
     } catch (e) {
@@ -139,8 +139,7 @@ export function App() {
       ref={contentRef}
       className={cn(
         'flex h-full flex-col gap-3',
-        step !== Step.Work &&
-        'rounded-window border border-glass-line p-6 shadow-glass backdrop-blur-(--glass-blur)',
+        step !== Step.Work && 'rounded-window border border-glass-line p-6 shadow-glass backdrop-blur-(--glass-blur)',
       )}
     >
       {step !== Step.Work && (
@@ -204,6 +203,8 @@ export function App() {
         {step === Step.Work && (
           <RunningScreen
             snap={state}
+            log={log}
+            onClearLog={() => void clearLog()}
             busy={busy}
             onToggle={(on) => run(() => Promise.all([api.setEnabled(on), on ? api.proxyOn() : api.proxyOff()]))}
             rulesSlot={

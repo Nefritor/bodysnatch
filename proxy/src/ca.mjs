@@ -25,22 +25,22 @@ function newKeyPair() {
 /**
  * Корневой CA: читаем из папки, иначе создаём и сохраняем.
  *
- * `protector` ({encrypt(string)→Buffer, decrypt(Buffer)→string}) шифрует закрытый
+ * `protector` ({encrypt(string)→Buffer|Promise, decrypt(Buffer)→string|Promise}) шифрует закрытый
  * ключ средствами ОС (DPAPI / Keychain через Electron safeStorage). Без него ключ
  * лежит в PEM-файле, доступном только владельцу.
  */
-export function ensureCA(dir, { protector = null } = {}) {
+export async function ensureCA(dir, { protector = null } = {}) {
   const certPath = path.join(dir, 'rootCA.pem');
   const keyPath = path.join(dir, 'rootCA.key.pem');
   const encPath = path.join(dir, 'rootCA.key.enc');
 
-  const readKey = () => {
+  const readKey = async () => {
     if (protector && fs.existsSync(encPath)) return protector.decrypt(fs.readFileSync(encPath));
     if (fs.existsSync(keyPath)) {
       const pem = fs.readFileSync(keyPath, 'utf8');
       // старый открытый ключ переводим в защищённый вид
       if (protector) {
-        fs.writeFileSync(encPath, protector.encrypt(pem), { mode: 0o600 });
+        fs.writeFileSync(encPath, await protector.encrypt(pem), { mode: 0o600 });
         fs.rmSync(keyPath, { force: true });
       }
       return pem;
@@ -49,7 +49,7 @@ export function ensureCA(dir, { protector = null } = {}) {
   };
 
   if (fs.existsSync(certPath)) {
-    const keyPem = readKey();
+    const keyPem = await readKey();
     if (keyPem) {
       const certPem = fs.readFileSync(certPath, 'utf8');
       return {
@@ -86,7 +86,7 @@ export function ensureCA(dir, { protector = null } = {}) {
   const keyPem = pki.privateKeyToPem(keys.privateKey);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(certPath, certPem, 'utf8');
-  if (protector) fs.writeFileSync(encPath, protector.encrypt(keyPem), { mode: 0o600 });
+  if (protector) fs.writeFileSync(encPath, await protector.encrypt(keyPem), { mode: 0o600 });
   else fs.writeFileSync(keyPath, keyPem, { encoding: 'utf8', mode: 0o600 });
   return { certPem, keyPem, cert, key: keys.privateKey, certPath, created: true };
 }

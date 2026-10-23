@@ -26,5 +26,8 @@ export type { RootsPanelProps } from './RootsPanel.js';
 export { ModulesPanel } from './ModulesPanel.js';
 export type { ModulesPanelProps } from './ModulesPanel.js';
 
+export { SettingsPanel } from './SettingsPanel.js';
+export type { SettingsPanelProps } from './SettingsPanel.js';
+
 export { MasksPanel } from './MasksPanel.js';
 export type { MaskKind, MasksPanelProps } from './MasksPanel.js';

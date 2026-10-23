@@ -18,9 +18,12 @@ async function post<T>(url: string, body?: unknown, timeoutMs = 30000): Promise<
   }
 }
 
+type Shell = { platform: string; send: (msg: Record<string, unknown>) => void };
+const shell = (): Shell | undefined => (window as unknown as { bs?: Shell }).bs;
+
 export const api = {
   state: () =>
-    fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(4000) }).then(
+    fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(8000) }).then(
       (r) => r.json() as Promise<Snapshot>,
     ),
   log: (n = 200) =>
@@ -32,74 +35,74 @@ export const api = {
   pickFolder: (title?: string) => post<{ ok: boolean; path?: string; message?: string }>('/api/pick-folder', { title }),
   open: (what: string, extra: Record<string, unknown> = {}) =>
     post<{ ok: boolean; message?: string }>('/api/open', { what, ...extra }),
-  // установка идёт через UAC и окно подтверждения — таймаут с большим запасом
+  // системное окно подтверждения может ждать пользователя долго
   certInstall: () => post<{ ok: boolean; trusted: boolean; error?: string }>('/api/cert/install', {}, 240000),
+  certReset: () => post<{ ok: boolean; restart?: boolean }>('/api/cert/reset', {}),
   proxyOn: () =>
-    post<{
-      ok: boolean;
-      elevated?: boolean;
-      cancelled?: boolean;
-      error?: string;
-      manual?: boolean;
-      address?: string;
-      systemProxy: Snapshot['systemProxy'];
-    }>('/api/proxy/on', {}, 200000),
-  proxyOff: () => post<{ ok: boolean; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/off', {}),
-  diagnose: () =>
-    fetch('/api/proxy/diagnose', { cache: 'no-store' }).then(
-      (r) => r.json() as Promise<{ writable: boolean; via: string; attempts: string[]; elevated: boolean }>,
-    ),
-  repairProxy: () =>
-    post<{
-      ok: boolean;
-      repaired: string[];
-      repairErrors: string[];
-      error?: string;
-      systemProxy: Snapshot['systemProxy'];
-    }>('/api/proxy/repair', {}),
+    post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/on', {}, 200000),
+  proxyOff: () => post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/off', {}),
   openSettings: () => post<{ ok: boolean }>('/api/open-settings', {}),
   quit: () => post<{ ok: boolean }>('/api/quit', {}),
-  /** команды нативному окну: в браузере это no-op */
-  shell: (action: string, extra?: Record<string, unknown>) => {
-    try {
-      const w = window as unknown as { chrome?: { webview?: { postMessage: (m: unknown) => void } } };
-      w.chrome?.webview?.postMessage({ bs: action, ...(extra ?? {}) });
-    } catch {
-      /* окно обычное */
-    }
-  },
+  /** команды окну приложения: в обычном браузере это no-op */
+  shell: (action: string, extra?: Record<string, unknown>) => shell()?.send({ bs: action, ...(extra ?? {}) }),
+  hasNativeShell: () => !!shell(),
+  platform: () => shell()?.platform ?? '',
   certFileUrl: '/api/cert/file',
-  hasNativeShell: () => {
-    try {
-      return !!(window as unknown as { chrome?: { webview?: unknown } }).chrome?.webview;
-    } catch {
-      return false;
-    }
-  },
 };
 
-/** Опрос состояния: на нём держится весь мастер. */
-export function useState1s(intervalMs = 1200) {
+const LOG_CAP = 500;
+
+/**
+ * Состояние приложения: один запрос при старте, дальше сервер сам присылает события
+ * (изменение состояния и новые записи журнала). Редкий опрос — только страховка.
+ */
+export function useBodysnatch() {
   const [state, setState] = useState<Snapshot | null>(null);
-  const [error, setError] = useState<string>('');
-  const timer = useRef<number | null>(null);
+  const [error, setError] = useState('');
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const busy = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
     try {
       setState(await api.state());
       setError('');
     } catch (e) {
       setError(String((e as Error)?.message || e));
+    } finally {
+      busy.current = false;
     }
   }, []);
 
   useEffect(() => {
     void refresh();
-    timer.current = window.setInterval(() => void refresh(), intervalMs);
-    return () => {
-      if (timer.current) window.clearInterval(timer.current);
-    };
-  }, [refresh, intervalMs]);
+    void api
+      .log(LOG_CAP)
+      .then((r) => r?.log && setLog(r.log))
+      .catch(() => undefined);
 
-  return { state, error, refresh };
+    const source = new EventSource('/api/events');
+    source.addEventListener('state', () => void refresh());
+    source.addEventListener('log', (ev) => {
+      try {
+        const entry = JSON.parse((ev as MessageEvent).data) as LogEntry;
+        setLog((prev) => [entry, ...prev].slice(0, LOG_CAP));
+      } catch {
+        /* битое событие */
+      }
+    });
+    const safety = window.setInterval(() => void refresh(), 10000);
+    return () => {
+      source.close();
+      window.clearInterval(safety);
+    };
+  }, [refresh]);
+
+  const clearLog = useCallback(async () => {
+    setLog([]);
+    await api.clearLog().catch(() => undefined);
+  }, []);
+
+  return { state, error, refresh, log, clearLog };
 }

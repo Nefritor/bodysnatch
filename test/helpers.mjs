@@ -55,9 +55,15 @@ export function fakeUpstream(port, { onTunnel } = {}) {
   };
 }
 
-export async function startProxy({ root, siteHandler = (req, res) => res.end('server'), config, upstreamOpts, proxyOpts = {} }) {
+export async function startProxy({
+  root,
+  siteHandler = (req, res) => res.end('server'),
+  config,
+  upstreamOpts,
+  proxyOpts = {},
+}) {
   const site = await startSite(siteHandler);
-  const ca = ensureCA(tmpdir('ca'));
+  const ca = await ensureCA(tmpdir('ca'));
   const cfg = config || makeConfig(root);
   const proxy = createProxy({
     config: cfg,
@@ -84,11 +90,16 @@ export async function startProxy({ root, siteHandler = (req, res) => res.end('se
 export function viaProxy(port, url, { method = 'GET', headers = {}, body } = {}) {
   const u = new URL(url);
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, method, path: url, headers: { host: u.host, ...headers } }, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }));
-    });
+    const req = http.request(
+      { host: '127.0.0.1', port, method, path: url, headers: { host: u.host, ...headers } },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () =>
+          resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }),
+        );
+      },
+    );
     req.on('error', reject);
     if (body) req.write(body);
     req.end();
@@ -105,14 +116,17 @@ export function httpsViaProxy(port, ca, host, urlPath, { method = 'GET', headers
       const secure = tls.connect({ socket, servername: host, ca: ca.certPem });
       secure.on('error', reject);
       secure.on('secureConnect', () => {
-        const req = http.request({ createConnection: () => secure, host, method, path: urlPath, headers: { host, ...headers } }, (r) => {
-          const chunks = [];
-          r.on('data', (c) => chunks.push(c));
-          r.on('end', () => {
-            secure.destroy();
-            resolve({ status: r.statusCode, headers: r.headers, body: Buffer.concat(chunks).toString('utf8') });
-          });
-        });
+        const req = http.request(
+          { createConnection: () => secure, host, method, path: urlPath, headers: { host, ...headers } },
+          (r) => {
+            const chunks = [];
+            r.on('data', (c) => chunks.push(c));
+            r.on('end', () => {
+              secure.destroy();
+              resolve({ status: r.statusCode, headers: r.headers, body: Buffer.concat(chunks).toString('utf8') });
+            });
+          },
+        );
         req.on('error', reject);
         req.end();
       });

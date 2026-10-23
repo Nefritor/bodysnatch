@@ -13,7 +13,10 @@ export const highlight = (text: string, query: string) => {
   while (at >= 0) {
     if (at > from) parts.push(text.slice(from, at));
     parts.push(
-      <mark key={`h${n}`} className="rounded-sm bg-amber-300/60 px-0.5 scale-112 text-ink outline-1 outline-amber-500/45">
+      <mark
+        key={`h${n}`}
+        className="rounded-sm bg-amber-300/60 px-0.5 scale-112 text-ink outline-1 outline-amber-500/45"
+      >
         {text.slice(at, at + q.length)}
       </mark>,
     );

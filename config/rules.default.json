@@ -1,8 +1,6 @@
 {
   "port": 8180,
-  "servicePrefixes": [
-    "static/resources"
-  ],
+  "servicePrefixes": ["static/resources"],
   "roots": [],
   "moduleRoots": {},
   "sites": [

@@ -27,16 +27,7 @@
     "at-rule-no-unknown": [
       true,
       {
-        "ignoreAtRules": [
-          "theme",
-          "apply",
-          "utility",
-          "variant",
-          "custom-variant",
-          "reference",
-          "source",
-          "plugin"
-        ]
+        "ignoreAtRules": ["theme", "apply", "utility", "variant", "custom-variant", "reference", "source", "plugin"]
       }
     ],
     "at-rule-prelude-no-invalid": null

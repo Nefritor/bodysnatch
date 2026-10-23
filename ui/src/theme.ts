@@ -1,54 +1,29 @@
 /**
- * Тема: семейство (neutral/slate/sand/ink/stone) и режим (light/dark).
- * Хранится в localStorage, применяется атрибутами на <html>.
+ * Тема: авто (как в системе), светлая или тёмная. Хранится в localStorage,
+ * применяется атрибутом data-mode на <html>.
  */
-export type ThemeFamily = 'neutral' | 'slate' | 'sand' | 'ink' | 'stone';
-export type ThemeMode = 'light' | 'dark';
-
-export type Theme = { family: ThemeFamily; mode: ThemeMode };
-
-export const FAMILIES: { id: ThemeFamily; label: string }[] = [
-  { id: 'neutral', label: 'Neutral' },
-  { id: 'slate', label: 'Slate' },
-  { id: 'sand', label: 'Sand' },
-  { id: 'ink', label: 'Ink' },
-  { id: 'stone', label: 'Stone' },
-];
+export type ThemeMode = 'auto' | 'light' | 'dark';
 
 const KEY = 'bodysnatch.theme';
+const MODES: ThemeMode[] = ['auto', 'light', 'dark'];
 
-const DEFAULT_THEME: Theme = { family: 'neutral', mode: 'light' };
-
-export const loadTheme = (): Theme => {
+export const loadTheme = (): ThemeMode => {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_THEME;
-    const parsed = JSON.parse(raw) as Partial<Theme>;
-    const family = FAMILIES.some((f) => f.id === parsed.family) ? (parsed.family as ThemeFamily) : 'neutral';
-    const mode: ThemeMode = parsed.mode === 'dark' ? 'dark' : 'light';
-    return { family, mode };
+    return MODES.includes(raw as ThemeMode) ? (raw as ThemeMode) : 'auto';
   } catch {
-    return DEFAULT_THEME;
+    return 'auto';
   }
 };
 
-export const applyTheme = (theme: Theme) => {
-  const root = document.documentElement;
-  root.dataset.theme = theme.family;
-  root.dataset.mode = theme.mode;
-  // сообщаем окну режим: фон формы подстраивается, иначе на скруглениях мелькает светлое
+export const nextTheme = (mode: ThemeMode): ThemeMode => MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+
+const systemDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+export const applyTheme = (mode: ThemeMode) => {
+  document.documentElement.dataset.mode = mode === 'auto' ? (systemDark() ? 'dark' : 'light') : mode;
   try {
-    (
-      window as unknown as { chrome?: { webview?: { postMessage: (m: unknown) => void } } }
-    ).chrome?.webview?.postMessage({
-      bs: 'theme',
-      mode: theme.mode,
-    });
-  } catch {
-    /* в браузере окна нет */
-  }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(theme));
+    localStorage.setItem(KEY, mode);
   } catch {
     /* приватный режим — просто не сохраняем */
   }

@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pickSite, hostMatches, resolveLocal, touchConfig, compile, relForSite, hostOfPattern } from '../proxy/src/rules.mjs';
+import {
+  pickSite,
+  hostMatches,
+  resolveLocal,
+  touchConfig,
+  compile,
+  relForSite,
+  hostOfPattern,
+} from '../proxy/src/rules.mjs';
 import { buildPac } from '../proxy/src/pac.mjs';
 import { normalizeConfig } from '../proxy/src/config.mjs';
 import { tmpdir } from './helpers.mjs';

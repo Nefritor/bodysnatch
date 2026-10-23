@@ -1,6 +1,6 @@
 /** Шаг правил — папки с кодом, модули и маска сайта. */
 import type { MaskOption, Snapshot, SiteMask } from '../types.js';
-import { MasksPanel, ModulesPanel, RootsPanel } from '../components/index.js';
+import { MasksPanel, RootsPanel, SettingsPanel } from '../components/index.js';
 import { Button } from '../ui/Button.js';
 
 export type RulesScreenProps = {
@@ -29,6 +29,7 @@ export const RulesScreen = ({
     <div className="flex flex-col gap-3">
       <RootsPanel roots={snap.roots} modules={snap.modules} onChanged={onChanged} />
       <MasksPanel mask={mask} onChange={onMaskChange} files={files} onFilesChange={onFilesChange} />
+      {embedded ? <SettingsPanel snap={snap} onChanged={onChanged} /> : null}
     </div>
   );
 

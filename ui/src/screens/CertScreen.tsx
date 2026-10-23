@@ -34,7 +34,9 @@ export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
           <Badge tone={trusted ? 'ok' : 'bad'}>{trusted ? 'установлен' : 'не установлен'}</Badge>
         </div>
         <p className="text-sm text-ink-muted">
-          Чтобы читать защищённый трафик, установите корневой сертификат BodySnatch
+          Чтобы подменять файлы на HTTPS-сайтах, установите корневой сертификат BodySnatch. Он нужен только для сайтов
+          из ваших масок. Firefox хранит сертификаты отдельно: включите в about:config параметр
+          security.enterprise_roots.enabled.
         </p>
 
         <div className="w-fit rounded-md border border-glass-line bg-nested px-4 py-2.5 backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)]">
@@ -47,13 +49,29 @@ export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
             )}
           </div>
           <div className="mt-0.5 flex flex-col gap-0.5 text-xs text-ink-muted">
-            <span>{trusted ? 'установлен в «Доверенные корневые центры»' : 'ещё не установлен'}</span>
+            <span>
+              {trusted
+                ? snap.platform === 'darwin'
+                  ? 'установлен в связку ключей «Вход»'
+                  : 'установлен в «Доверенные корневые центры»'
+                : 'ещё не установлен'}
+            </span>
             <div className="font-mono selectable">отпечаток: {snap.cert.thumbprint}</div>
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-end gap-2">
+        {trusted ? (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            title="Убрать сертификат из системы и удалить ключ; приложение закроется"
+            onClick={() => window.confirm('Удалить сертификат и закрыть приложение?') && void api.certReset()}
+          >
+            Удалить сертификат
+          </Button>
+        ) : null}
         {!trusted ? (
           <Button variant="primary" onClick={() => void install()} disabled={busy || phase === 'installing'}>
             {phase === 'installing' ? 'Устанавливаем…' : 'Установить сертификат'}

@@ -31,7 +31,7 @@ export async function proxyState() {
 /** Сообщить WinINET, что настройки изменились (браузеры подхватывают сразу). */
 async function notifyChanged() {
   const script =
-    "$s='[DllImport(\"wininet.dll\")] public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);';" +
+    '$s=\'[DllImport("wininet.dll")] public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);\';' +
     '$t=Add-Type -MemberDefinition $s -Name W -Namespace BS -PassThru;' +
     '$t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0)|Out-Null;' +
     '$t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)|Out-Null';
@@ -48,7 +48,8 @@ export async function setPac(url) {
 
 /** Вернуть то, что было до нас (снимок из proxyState). */
 export async function restoreProxy(prev) {
-  const r = prev && prev.pacUrl ? await writePac(prev.pacUrl) : await run(REG, ['delete', KEY, '/v', 'AutoConfigURL', '/f']);
+  const r =
+    prev && prev.pacUrl ? await writePac(prev.pacUrl) : await run(REG, ['delete', KEY, '/v', 'AutoConfigURL', '/f']);
   // «значения нет» при удалении — не ошибка: прокси и так выключен
   const absent = /unable to find|не удается найти|не найден/i.test(r.stderr);
   if (!r.ok && !absent) throw new Error('не удалось вернуть настройки прокси: ' + r.stderr.trim());
@@ -63,7 +64,10 @@ export async function openProxySettings() {
 export async function certTrusted({ pem }) {
   const sha1 = thumbprintOf(pem);
   for (const hive of ['HKCU', 'HKLM']) {
-    const r = await run(REG, ['query', `${hive}\\Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\${sha1}`]);
+    const r = await run(REG, [
+      'query',
+      `${hive}\\Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\${sha1}`,
+    ]);
     if (r.ok) return true;
   }
   return false;

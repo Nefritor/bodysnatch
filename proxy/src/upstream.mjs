@@ -109,7 +109,8 @@ export function createUpstream({ getProxy = () => '', log = () => {} } = {}) {
         autoSelectFamily: true,
         autoSelectFamilyAttemptTimeout: 800,
       };
-      if (!proxy) return (isHttps ? https : http).request(target, { ...common, agent: isHttps ? httpsAgent : httpAgent }, cb);
+      if (!proxy)
+        return (isHttps ? https : http).request(target, { ...common, agent: isHttps ? httpsAgent : httpAgent }, cb);
       if (isHttps) return https.request(target, { ...common, agent: tunnelAgent(proxy) }, cb);
       return http.request(
         {

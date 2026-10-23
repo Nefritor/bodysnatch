@@ -15,6 +15,8 @@ import { highlight } from '../lib/highlight.js';
 export type RunningScreenProps = {
   snap: Snapshot;
   busy: boolean;
+  log: LogEntry[];
+  onClearLog: () => void;
   onToggle: (on: boolean) => void;
   /** готовый блок правил — показывается под спойлером */
   rulesSlot: ReactNode;
@@ -31,18 +33,13 @@ const tailAfterModule = (file: string, module: string) => {
   return path.slice(at + marker.length);
 };
 
-/**
- * Журнал живёт в модуле, а не только в состоянии компонента: при перемонтировании
- * экрана (или перерисовке дерева) строки больше не «исчезают сами по себе».
- */
-let logCache: LogEntry[] = [];
-const logKey = (e: LogEntry) => `${e.t}|${e.status}|${e.file || ''}|${e.url}`;
-
 /** Строка таблицы: фиксированные первые три колонки, последняя — по остатку. */
 const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-2';
 
-export const RunningScreen = ({ snap, busy, onToggle, rulesSlot }: RunningScreenProps) => {
-  const [log, setLog] = useState<LogEntry[]>(logCache);
+type Filter = 'mirror' | 'all' | 'errors';
+
+export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot }: RunningScreenProps) => {
+  const [filter, setFilter] = useState<Filter>('mirror');
   const [query, setQuery] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
   const [queriesOpen, setQueriesOpen] = useState(false);
@@ -53,58 +50,30 @@ export const RunningScreen = ({ snap, busy, onToggle, rulesSlot }: RunningScreen
   }, [snap.enabled, pending]);
   const checked = pending ?? snap.enabled;
 
-  useEffect(() => {
-    let alive = true;
-    const tick = async () => {
-      try {
-        const r = await api.log(300);
-        if (!alive || !r || !Array.isArray(r.log)) return;
-        // Дополняем, а не заменяем: журнал не должен «пропадать» ни при
-        // перезапуске прокси, ни при перемонтировании экрана.
-        const seen = new Set(r.log.map(logKey));
-        const merged = [...r.log, ...logCache.filter((e) => !seen.has(logKey(e)))].slice(0, 500);
-        logCache = merged;
-        setLog(merged);
-      } catch {
-        /* прокси мог закрыться */
-      }
-    };
-    void tick();
-    const t = window.setInterval(() => void tick(), 1500);
-    return () => {
-      alive = false;
-      window.clearInterval(t);
-    };
-  }, []);
-
-  const clearLog = async () => {
-    logCache = [];
-    setLog([]);
-    try {
-      await api.clearLog();
-    } catch {
-      /* прокси мог не ответить */
-    }
-  };
-
   // только подмены локальными файлами, последние 100, с поиском по содержимому
   const rows = useMemo(() => {
-    const mirrored = log.filter((e) => e.via.startsWith('mirror') && e.file);
+    const mirrored = log.filter((e) =>
+      filter === 'mirror'
+        ? e.via.startsWith('mirror') && e.file
+        : filter === 'errors'
+          ? e.via === 'error' || e.via === 'map-miss' || e.status >= 400
+          : e.via !== 'switch',
+    );
     const q = query.trim().toLowerCase();
     const filtered = q
       ? mirrored.filter((e) =>
-        `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
-          .toLowerCase()
-          .includes(q),
-      )
+          `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
+            .toLowerCase()
+            .includes(q),
+        )
       : mirrored;
     return filtered.slice(0, 100);
-  }, [log, query]);
+  }, [log, query, filter]);
 
   useEffect(() => {
     const sizes = STEPS.find(({ key }) => key === Step.Work)?.size;
     if (sizes) {
-      const h = sizes.h + (rulesOpen ? 425 : 0) + (queriesOpen ? 254 : 0);
+      const h = sizes.h + (rulesOpen ? 520 : 0) + (queriesOpen ? 254 : 0);
       api.shell('resize', { w: sizes.w, h });
     }
   }, [rulesOpen, queriesOpen]);
@@ -153,7 +122,7 @@ export const RunningScreen = ({ snap, busy, onToggle, rulesSlot }: RunningScreen
           Правила подмены
         </button>
         {rulesOpen ? (
-          <div className="h-[425px] pt-2">
+          <div className="h-[520px] pt-2">
             <div className="h-full">{rulesSlot}</div>
           </div>
         ) : null}
@@ -181,12 +150,38 @@ export const RunningScreen = ({ snap, busy, onToggle, rulesSlot }: RunningScreen
 
         {queriesOpen ? (
           <div className="flex flex-col gap-2 pt-2">
-            <Input
-              type="search"
-              placeholder="Поиск по времени, статусу, модулю или пути"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                type="search"
+                placeholder="Поиск по времени, статусу, модулю или пути"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <div className="flex shrink-0 gap-1" role="group" aria-label="Фильтр журнала">
+                {(
+                  [
+                    ['mirror', 'Подмены'],
+                    ['errors', 'Ошибки'],
+                    ['all', 'Все'],
+                  ] as [Filter, string][]
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={filter === key}
+                    onClick={() => setFilter(key)}
+                    className={cn(
+                      'rounded-pill border px-2.5 py-1 text-xs transition-colors',
+                      filter === key
+                        ? 'border-brand/25 bg-brand-soft font-semibold text-brand'
+                        : 'border-glass-line bg-field text-ink-muted hover:bg-glass-strong',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {rows.length === 0 ? (
               <div className="grid h-[200px] place-items-center rounded-md border border-glass-line bg-nested text-xs text-ink-muted backdrop-blur-(--glass-blur)">
@@ -196,30 +191,22 @@ export const RunningScreen = ({ snap, busy, onToggle, rulesSlot }: RunningScreen
               <div className="relative">
                 {rows.length > 0 ? (
                   <div className="absolute top-0.75 right-3 z-20">
-                    <Button size="round" variant="secondary" onClick={() => void clearLog()} title="Очистить журнал">
+                    <Button size="round" variant="secondary" onClick={onClearLog} title="Очистить журнал">
                       <IconClose size={12} />
                     </Button>
                   </div>
                 ) : null}
                 <div className="h-[200px] overflow-auto rounded-md border border-glass-line bg-nested px-3 backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)">
-                  <div
-                    className={cn(
-                      ROW,
-                      'sticky top-0 z-10 py-1.5 text-xs font-semibold text-ink-muted',
-                    )}
-                  >
+                  <div className={cn(ROW, 'sticky top-0 z-10 py-1.5 text-xs font-semibold text-ink-muted')}>
                     <span>Время</span>
                     <span>Статус</span>
-                    <span>Модуль</span>
-                    <span>Локальный файл</span>
+                    <span>{filter === 'mirror' ? 'Модуль' : 'Тип'}</span>
+                    <span>{filter === 'mirror' ? 'Локальный файл' : 'Файл или адрес'}</span>
                   </div>
                   {rows.map((e, i) => (
                     <div
                       key={`${e.t}-${e.file}-${i}`}
-                      className={cn(
-                        ROW,
-                        'border-b border-line py-1 text-xs transition-colors last:border-0',
-                      )}
+                      className={cn(ROW, 'border-b border-line py-1 text-xs transition-colors last:border-0')}
                     >
                       <span className="truncate text-ink-muted">{highlight(String(e.t).slice(0, 8), query)}</span>
                       <span>
@@ -228,10 +215,10 @@ export const RunningScreen = ({ snap, busy, onToggle, rulesSlot }: RunningScreen
                         </Badge>
                       </span>
                       <span className="truncate">
-                        <Badge title={e.module || ''}>{highlight(e.module || '—', query)}</Badge>
+                        <Badge title={e.module || e.via}>{highlight(e.module || e.via, query)}</Badge>
                       </span>
-                      <span className="truncate font-mono text-ink" title={e.file || ''}>
-                        {highlight(tailAfterModule(e.file || '', e.module || ''), query)}
+                      <span className="truncate font-mono text-ink" title={e.file || e.url}>
+                        {highlight(e.file ? tailAfterModule(e.file, e.module || '') : e.note || e.url, query)}
                       </span>
                     </div>
                   ))}

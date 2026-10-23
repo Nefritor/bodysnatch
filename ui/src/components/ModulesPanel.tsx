@@ -110,7 +110,5 @@ export const ModulesPanel = ({ modules, roots, onChanged }: ModulesPanelProps) =
         </Modal>
       ) : null}
     </PanelHead>
-
-
   );
 };

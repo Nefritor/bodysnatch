@@ -66,7 +66,13 @@ test('включение PAC сохраняет прежнее состояни�
 test('после аварии наш PAC снимается при следующем запуске', async () => {
   const platform = fakePlatform();
   const dir = tmpdir('crash');
-  const opts = { configPath: path.join(dir, 'rules.json'), stateDir: dir, certsDir: path.join(dir, 'certs'), platform, port: 0 };
+  const opts = {
+    configPath: path.join(dir, 'rules.json'),
+    stateDir: dir,
+    certsDir: path.join(dir, 'certs'),
+    platform,
+    port: 0,
+  };
   const first = await createEngine(opts);
   await first.start();
   await first.enableSystemProxy();
@@ -124,26 +130,26 @@ test('сертификат: установка и проверка идут че
   }
 });
 
-test('ключ CA шифруется protector-ом и не лежит на диске открытым', () => {
+test('ключ CA шифруется protector-ом и не лежит на диске открытым', async () => {
   const dir = tmpdir('protect');
   const protector = {
     encrypt: (s) => Buffer.from(s, 'utf8').reverse(),
     decrypt: (b) => Buffer.from(b).reverse().toString('utf8'),
   };
-  const first = ensureCA(dir, { protector });
+  const first = await ensureCA(dir, { protector });
   assert.equal(fs.existsSync(path.join(dir, 'rootCA.key.pem')), false);
   assert.equal(fs.existsSync(path.join(dir, 'rootCA.key.enc')), true);
-  const again = ensureCA(dir, { protector });
+  const again = await ensureCA(dir, { protector });
   assert.equal(again.created, false);
   assert.equal(again.certPem, first.certPem);
 });
 
-test('старый открытый ключ переводится в защищённый вид', () => {
+test('старый открытый ключ переводится в защищённый вид', async () => {
   const dir = tmpdir('migrate');
-  ensureCA(dir); // без protector: PEM-файл
+  await ensureCA(dir); // без protector: PEM-файл
   assert.equal(fs.existsSync(path.join(dir, 'rootCA.key.pem')), true);
   const protector = { encrypt: (s) => Buffer.from(s), decrypt: (b) => String(b) };
-  ensureCA(dir, { protector });
+  await ensureCA(dir, { protector });
   assert.equal(fs.existsSync(path.join(dir, 'rootCA.key.pem')), false);
   assert.equal(fs.existsSync(path.join(dir, 'rootCA.key.enc')), true);
 });
@@ -178,7 +184,10 @@ test('прокси больше не отдаёт API: на его порту т
   const { engine } = await boot();
   try {
     const status = await new Promise((resolve) => {
-      http.get({ host: '127.0.0.1', port: engine.port, path: '/api/state' }, (res) => (res.resume(), resolve(res.statusCode)));
+      http.get(
+        { host: '127.0.0.1', port: engine.port, path: '/api/state' },
+        (res) => (res.resume(), resolve(res.statusCode)),
+      );
     });
     assert.equal(status, 404);
   } finally {

@@ -40,7 +40,11 @@ export function createApiServer(engine, { allowedOrigins = [] } = {}) {
     }
 
     if (r.sse) {
-      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-store',
+        connection: 'keep-alive',
+      });
       res.write(': ok\n\n');
       const off = r.sse((event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       res.on('close', off);

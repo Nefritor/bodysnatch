@@ -36,22 +36,17 @@ export type Config = {
   roots?: (string | { path: string; enabled?: boolean })[];
   moduleRoots?: Record<string, string>;
   sites: SiteConfig[];
+  upstreamProxy?: string;
+  liveReload?: boolean;
 };
 
-export type SystemProxy = { enabled: boolean; server: string; override: string; ours: boolean };
+export type SystemProxy = { enabled: boolean; server: string; override: string; ours: boolean; pacUrl?: string };
 
 export type CertState = {
   trusted: boolean;
   thumbprint: string;
   certPath: string;
   created: boolean;
-  /** чем закончилась последняя попытка установки (code — код возврата certutil) */
-  install?: { via: string; code: number | null; at: number; error: string };
-  /** где последняя проверка нашла сертификат (via пустое — не найден) */
-  check?: { found: boolean; via: string; at: number };
-  elevated?: boolean;
-  /** запущено в песочнице (низкий уровень целостности) */
-  lowIntegrity?: boolean;
 };
 
 /** Снимок состояния прокси — то, что отдаёт GET /api/state. */
@@ -71,12 +66,14 @@ export type Snapshot = {
   stats: { local: number; remote: number };
   cert: CertState;
   systemProxy: SystemProxy;
-  /** можно ли менять прокси без запроса прав */
-  proxyWritable: boolean;
-  /** приложение запущено от администратора */
-  elevated: boolean;
-  /** приложение запущено в песочнице (низкий уровень целостности) */
-  lowIntegrity?: boolean;
+  platform: string;
+  /** адрес PAC, который получает система */
+  pacUrl: string;
+  /** хосты, которые идут через прокси; null — все */
+  hosts: string[] | null;
+  /** вышестоящий прокси, если он есть */
+  upstream: string;
+  liveReload: boolean;
 };
 
 export type LogEntry = {

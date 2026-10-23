@@ -1,12 +1,10 @@
 /**
  * Дизайн-система BodySnatch: токены + база.
  *
- * Тема = семейство (`data-theme`: neutral | slate | sand | ink | stone)
- * плюс режим (`data-mode`: light | dark). Оба атрибута ставятся на <html>,
- * поэтому все утилиты Tailwind переключаются без перерисовки компонентов.
+ * Режим (`data-mode`: light | dark) ставится на <html>, поэтому все утилиты Tailwind
+ * переключаются без перерисовки компонентов.
  */
 @import "./fontfaces.css";
-@import "./fonts.css";
 @import "./brand.css";
 @import "tailwindcss";
 
@@ -120,38 +118,6 @@
 }
 
 /* ── Семейства (светлые) ──────────────────────────────────────────────────── */
-[data-theme="slate"] {
-  --c-bg1: #f3f5f8;
-  --c-bg2: #e5e9ef;
-  --c-accent: #334155;
-  --c-accent-deep: #1f2937;
-  --c-accent-soft: rgb(51 65 85 / 12%);
-}
-
-[data-theme="sand"] {
-  --c-bg1: #faf8f4;
-  --c-bg2: #eee9e0;
-  --c-accent: #8a6a3b;
-  --c-accent-deep: #6f5330;
-  --c-accent-soft: rgb(138 106 59 / 14%);
-}
-
-[data-theme="ink"] {
-  --c-bg1: #f6f7f9;
-  --c-bg2: #e7e9ee;
-  --c-accent: #1d4ed8;
-  --c-accent-deep: #1740ad;
-  --c-accent-soft: rgb(29 78 216 / 12%);
-}
-
-[data-theme="stone"] {
-  --c-bg1: #f5f4f1;
-  --c-bg2: #e8e6e1;
-  --c-accent: #57534e;
-  --c-accent-deep: #3f3b37;
-  --c-accent-soft: rgb(87 83 78 / 12%);
-}
-
 /* ── Тёмный режим ─────────────────────────────────────────────────────────── */
 [data-mode="dark"] {
   --c-ink: #e9ecf1;
@@ -192,38 +158,6 @@
 
   --shadow-matte: 0 14px 32px rgb(0 0 0 / 45%);
   --shadow-glass: 0 14px 32px rgb(0 0 0 / 45%);
-}
-
-[data-mode="dark"][data-theme="slate"] {
-  --c-bg1: #151b23;
-  --c-bg2: #0d1219;
-  --c-accent: #cbd5e1;
-  --c-accent-deep: #aab7c8;
-  --c-accent-soft: rgb(203 213 225 / 16%);
-}
-
-[data-mode="dark"][data-theme="sand"] {
-  --c-bg1: #1a1712;
-  --c-bg2: #12100c;
-  --c-accent: #dcc39c;
-  --c-accent-deep: #c3a77c;
-  --c-accent-soft: rgb(220 195 156 / 16%);
-}
-
-[data-mode="dark"][data-theme="ink"] {
-  --c-bg1: #12161d;
-  --c-bg2: #0b0d11;
-  --c-accent: #a9b8d6;
-  --c-accent-deep: #8b9dbc;
-  --c-accent-soft: rgb(169 184 214 / 16%);
-}
-
-[data-mode="dark"][data-theme="stone"] {
-  --c-bg1: #161514;
-  --c-bg2: #0f0e0d;
-  --c-accent: #d6d3d1;
-  --c-accent-deep: #b9b5b2;
-  --c-accent-soft: rgb(214 211 209 / 16%);
 }
 
 /* ── База ─────────────────────────────────────────────────────────────────── */
