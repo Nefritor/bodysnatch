@@ -62,10 +62,10 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     const q = query.trim().toLowerCase();
     const filtered = q
       ? mirrored.filter((e) =>
-          `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
-            .toLowerCase()
-            .includes(q),
-        )
+        `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
+          .toLowerCase()
+          .includes(q),
+      )
       : mirrored;
     return filtered.slice(0, 100);
   }, [log, query, filter]);
@@ -73,7 +73,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
   useEffect(() => {
     const sizes = STEPS.find(({ key }) => key === Step.Work)?.size;
     if (sizes) {
-      const h = sizes.h + (rulesOpen ? 520 : 0) + (queriesOpen ? 254 : 0);
+      const h = sizes.h + (rulesOpen ? 590 : 0) + (queriesOpen ? 260 : 0);
       api.shell('resize', { w: sizes.w, h });
     }
   }, [rulesOpen, queriesOpen]);
@@ -122,7 +122,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
           Правила подмены
         </button>
         {rulesOpen ? (
-          <div className="h-[520px] pt-2">
+          <div className="h-[590px] pt-2">
             <div className="h-full">{rulesSlot}</div>
           </div>
         ) : null}
@@ -132,7 +132,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
         className={cn(
           'border border-b-0 border-glass-line bg-nested shadow-glass transition-colors',
           'backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)',
-          'mt-auto px-4 py-2 -ml-[11px] w-[calc(100%+22px)]',
+          'mt-auto px-4 pt-2 pb-4 -ml-[11px] w-[calc(100%+22px)]',
           !queriesOpen && 'cursor-pointer hover:bg-hover',
         )}
         onClick={queriesOpen ? undefined : () => setQueriesOpen(true)}
