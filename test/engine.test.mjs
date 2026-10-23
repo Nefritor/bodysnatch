@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createEngine } from '../proxy/src/engine.mjs';
 import { createApiServer } from '../proxy/src/httpapi.mjs';
 import { ensureCA } from '../proxy/src/ca.mjs';
@@ -190,6 +191,58 @@ test('прокси больше не отдаёт API: на его порту т
       );
     });
     assert.equal(status, 404);
+  } finally {
+    await engine.stop();
+  }
+});
+
+test('Name Constraints: CA подписывает только домены из масок, для чужих проверка TLS падает', async () => {
+  const { default: tls } = await import('node:tls');
+  const { createLeafIssuer, baseDomains } = await import('../proxy/src/ca.mjs');
+  assert.deepEqual(baseDomains(['fix-cdn.sbis.ru', 'rc-cdn.saby.ru', 'a.b.example.co.uk']), [
+    'example.co.uk',
+    'saby.ru',
+    'sbis.ru',
+  ]);
+  assert.equal(baseDomains(['*']), null);
+
+  const ca = await ensureCA(tmpdir('nc'), { domains: ['sbis.ru'] });
+  assert.deepEqual(ca.domains, ['sbis.ru']);
+  const leafFor = createLeafIssuer(ca);
+
+  const handshake = (host) =>
+    new Promise((resolve) => {
+      const leaf = leafFor(host);
+      const server = tls.createServer({ key: leaf.keyPem, cert: leaf.certPem }, (s) => s.end());
+      server.listen(0, '127.0.0.1', () => {
+        const client = tls.connect({
+          port: server.address().port,
+          host: '127.0.0.1',
+          servername: host,
+          ca: ca.certPem,
+        });
+        client.on('secureConnect', () => (client.destroy(), server.close(), resolve('ok')));
+        client.on('error', (e) => (server.close(), resolve(e.code)));
+      });
+    });
+
+  assert.equal(await handshake('fix-cdn.sbis.ru'), 'ok');
+  assert.notEqual(await handshake('bank.example.com'), 'ok', 'чужой домен отвергается');
+
+  const reloaded = await ensureCA(path.dirname(ca.certPath));
+  assert.deepEqual(reloaded.domains, ['sbis.ru'], 'ограничения читаются с диска');
+});
+
+test('engine: маска вне домена CA фиксируется в caConstraints и не вскрывается', async () => {
+  const { engine } = await boot(fakePlatform(), {
+    defaultConfigPath: fileURLToPath(new URL('../config/rules.default.json', import.meta.url)),
+  });
+  try {
+    assert.equal(engine.caConstraints().constrained, true);
+    await engine.api.handle('POST', '/api/config', {
+      config: { sites: [{ id: 's', enabled: true, match: ['https://x.newdomain.test'] }] },
+    });
+    assert.deepEqual(engine.caConstraints().uncovered, ['newdomain.test']);
   } finally {
     await engine.stop();
   }

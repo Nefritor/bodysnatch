@@ -47,6 +47,8 @@ export type CertState = {
   thumbprint: string;
   certPath: string;
   created: boolean;
+  /** на какие домены ограничен корневой сертификат */
+  constraints: { constrained: boolean; domains: string[]; uncovered: string[]; canTighten: boolean };
 };
 
 /** Снимок состояния прокси — то, что отдаёт GET /api/state. */

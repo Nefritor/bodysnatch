@@ -66,6 +66,8 @@ export function createProxy({
   files = syncFs,
   upstream = createUpstream(),
   pac = null,
+  /** можно ли выпустить сертификат для хоста (CA ограничен доменами) */
+  canIssue = () => true,
   onLog = () => {},
   onChange = () => {},
   log = () => {},
@@ -342,7 +344,7 @@ export function createProxy({
     const host = m[1].toLowerCase();
     const port = Number(m[2]);
 
-    const intercept = state.enabled && !isLoopback(host) && hostMatches(config, host);
+    const intercept = state.enabled && !isLoopback(host) && hostMatches(config, host) && canIssue(host);
     if (!intercept) {
       try {
         const remote = await upstream.tunnel(host, port);

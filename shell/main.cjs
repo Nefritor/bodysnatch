@@ -2,26 +2,14 @@
 /**
  * BodySnatch Desktop — оболочка Electron (Windows и macOS).
  *
- * Движок (прокси, PAC, сертификат) работает в этом же процессе. Интерфейс грузится
- * по протоколу app://, а его вызовы API идут напрямую в движок — без сетевого порта,
- * поэтому до API не дотянется ни одна веб-страница.
+ * Движок (прокси, PAC, сертификат) работает в отдельном процессе (shell/engine-worker.cjs).
+ * Интерфейс грузится по протоколу app://, а его вызовы API идут движку через IPC —
+ * без сетевого порта, поэтому до API не дотянется ни одна веб-страница.
  */
-const {
-  app,
-  BrowserWindow,
-  Tray,
-  Menu,
-  ipcMain,
-  dialog,
-  shell,
-  nativeImage,
-  screen,
-  protocol,
-  safeStorage,
-} = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage, screen, protocol } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { pathToFileURL } = require('node:url');
+const { createEngineHost } = require('./engine-host.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const DEV = process.argv.includes('--dev') || process.env.BODYSNATCH_DEV === '1';
@@ -61,14 +49,13 @@ function log(message) {
   }
 }
 
-let engine = null;
-let apiServer = null;
+let host = null;
 let win = null;
 let tray = null;
 let configured = false;
 let quitting = false;
 
-// ── движок ──────────────────────────────────────────────────────────────────
+// ── движок в отдельном процессе ──────────────────────────────────────────────
 /** Корневой CA прошлых версий лежал в %LOCALAPPDATA%: берём его, чтобы не потерять установленное доверие. */
 function migrateLegacyCA(certsDir) {
   const legacy = path.join(process.env.LOCALAPPDATA || '', 'BodySnatch', 'certs');
@@ -86,52 +73,87 @@ function migrateLegacyCA(certsDir) {
 
 async function startEngine() {
   migrateLegacyCA(path.join(DATA, 'certs'));
-  const { createEngine } = await import(pathToFileURL(path.join(ROOT, 'proxy', 'src', 'engine.mjs')).href);
   const dev = path.join(ROOT, 'config', 'rules.user.json');
-  const protector = (await safeStorage.isAsyncEncryptionAvailable())
-    ? {
-        encrypt: (s) => safeStorage.encryptStringAsync(s),
-        decrypt: async (b) => (await safeStorage.decryptStringAsync(b)).result,
-      }
-    : null;
-  engine = await createEngine({
-    configPath: !app.isPackaged && fs.existsSync(dev) ? dev : path.join(DATA, 'rules.json'),
-    defaultConfigPath: path.join(ROOT, 'config', 'rules.default.json'),
-    stateDir: DATA,
-    certsDir: path.join(DATA, 'certs'),
-    distDir: path.join(ROOT, 'ui', 'dist'),
-    protector,
-    version: app.getVersion(),
-    port: Number(process.env.BODYSNATCH_PORT) || 0,
+  host = createEngineHost({
     log,
-    hooks: {
-      pickFolder: async (title) => {
-        const r = await dialog.showOpenDialog(win, { title, properties: ['openDirectory'] });
-        return r.canceled ? '' : r.filePaths[0] || '';
-      },
-      openPath: (target) => shell.openPath(target),
-      quit: () => void quitApp(),
+    getWindow: () => win,
+    onQuit: () => void quitApp(),
+    // системные настройки вернёт следующий запуск; PAC без живого прокси даёт DIRECT
+    onCrash: () => {
+      if (quitting) return;
+      dialog.showErrorBox('BodySnatch', 'Процесс движка неожиданно завершился. Запустите приложение снова.');
+      app.exit(1);
     },
   });
-  const port = await engine.start();
-  log(`движок запущен: прокси 127.0.0.1:${port}, PAC ${engine.pacUrl()}`);
-
-  if (UI_OVERRIDE) {
-    const { createApiServer } = await import(pathToFileURL(path.join(ROOT, 'proxy', 'src', 'httpapi.mjs')).href);
-    apiServer = createApiServer(engine, { allowedOrigins: [new URL(UI_OVERRIDE).origin] });
-    log('API для Vite: http://127.0.0.1:' + (await apiServer.listen(8181)));
-  }
+  const info = await host.start(
+    {
+      configPath: !app.isPackaged && fs.existsSync(dev) ? dev : path.join(DATA, 'rules.json'),
+      defaultConfigPath: path.join(ROOT, 'config', 'rules.default.json'),
+      stateDir: DATA,
+      certsDir: path.join(DATA, 'certs'),
+      version: app.getVersion(),
+      port: Number(process.env.BODYSNATCH_PORT) || 0,
+    },
+    UI_OVERRIDE ? { port: 8181, origin: new URL(UI_OVERRIDE).origin } : null,
+  );
+  log(`движок запущен: прокси 127.0.0.1:${info.port}, PAC ${info.pacUrl}`);
 }
 
-/** Протокол app://: статика интерфейса и вызовы API. */
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+};
+
+/** Статика интерфейса отдаётся прямо из основного процесса. */
+function serveStatic(pathname) {
+  const dist = path.join(ROOT, 'ui', 'dist');
+  let rel;
+  try {
+    rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
+  } catch {
+    return new Response('', { status: 400 });
+  }
+  const abs = path.resolve(dist, rel);
+  const inside = abs.startsWith(dist + path.sep);
+  const file = inside && fs.existsSync(abs) && fs.statSync(abs).isFile() ? abs : path.join(dist, 'index.html');
+  return new Response(fs.readFileSync(file), {
+    headers: {
+      'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+/** Протокол app://: статика интерфейса и вызовы API к движку. */
 function registerAppProtocol() {
   const encoder = new TextEncoder();
   protocol.handle('app', async (request) => {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/api/')) {
-      const r = engine.api.serveStatic(url.pathname);
-      return new Response(r.body, { status: r.status, headers: r.headers });
+    if (!url.pathname.startsWith('/api/')) return serveStatic(url.pathname);
+
+    if (url.pathname === '/api/events') {
+      let unsubscribe = () => {};
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(': ok\n\n'));
+          unsubscribe = host.subscribe((m) => {
+            try {
+              controller.enqueue(encoder.encode(`event: ${m.event}\ndata: ${JSON.stringify(m.data)}\n\n`));
+            } catch {
+              /* читатель закрыт */
+            }
+          });
+        },
+        cancel: () => unsubscribe(),
+      });
+      return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' } });
     }
+
     let body = {};
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       try {
@@ -140,24 +162,7 @@ function registerAppProtocol() {
         /* пустое тело */
       }
     }
-    const r = await engine.api.handle(request.method, url.pathname + url.search, body);
-    if (r.sse) {
-      let off = () => {};
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(': ok\n\n'));
-          off = r.sse((event, data) => {
-            try {
-              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-            } catch {
-              off();
-            }
-          });
-        },
-        cancel: () => off(),
-      });
-      return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' } });
-    }
+    const r = await host.api(request.method, url.pathname + url.search, body);
     if (r.json !== undefined) {
       return new Response(JSON.stringify(r.json), {
         status: r.status,
@@ -265,13 +270,8 @@ async function quitApp() {
   if (quitting) return;
   quitting = true;
   try {
-    await Promise.race([
-      (async () => {
-        if (apiServer) await apiServer.close();
-        if (engine) await engine.stop();
-      })(),
-      new Promise((r) => setTimeout(r, 8000)),
-    ]);
+    // движок сам возвращает системные настройки; ждём, но не бесконечно
+    if (host) await host.stop();
   } catch (e) {
     log('выход: ' + e.message);
   }

@@ -13,6 +13,45 @@ const DAY = 24 * 60 * 60 * 1000;
 
 export const CA_NAME = 'BodySnatch Desktop Root CA';
 
+/**
+ * Базовые домены для ограничения CA: из хостов-шаблонов масок («fix-cdn.sbis.ru» → «sbis.ru»).
+ * null — ограничивать нечем (маска перехватывает всё), тогда CA создаётся без ограничений.
+ */
+export function baseDomains(hostGlobs) {
+  if (!hostGlobs || !hostGlobs.length) return null;
+  const out = new Set();
+  for (const glob of hostGlobs) {
+    const labels = String(glob).toLowerCase().split('.');
+    // co.uk, com.au: двухбуквенный TLD и короткий второй уровень
+    const take = labels.length >= 3 && labels.at(-1).length === 2 && labels.at(-2).length <= 3 ? 3 : 2;
+    const base = labels.slice(-take);
+    if (base.length < take || base.some((l) => !l || l.includes('*') || l.includes('?'))) return null;
+    out.add(base.join('.'));
+  }
+  return [...out].sort();
+}
+
+/** Хост входит в один из доменов (сам домен или его поддомен, как в RFC 5280). */
+export function domainPermitted(host, domains) {
+  if (!domains) return true;
+  const h = String(host || '').toLowerCase();
+  return domains.some((d) => h === d || h.endsWith('.' + d));
+}
+
+/** Расширение Name Constraints: разрешены только перечисленные DNS-домены. */
+function nameConstraintsExtension(domains) {
+  const asn1 = forge.asn1;
+  const subtrees = domains.map((d) =>
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(asn1.Class.CONTEXT_SPECIFIC, 2, false, d), // dNSName
+    ]),
+  );
+  const constraints = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, subtrees), // permittedSubtrees
+  ]);
+  return { id: '2.5.29.30', critical: true, value: asn1.toDer(constraints).getBytes() };
+}
+
 /** Пара RSA-ключей: нативная генерация, затем перевод в объекты forge. */
 function newKeyPair() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -29,10 +68,19 @@ function newKeyPair() {
  * ключ средствами ОС (DPAPI / Keychain через Electron safeStorage). Без него ключ
  * лежит в PEM-файле, доступном только владельцу.
  */
-export async function ensureCA(dir, { protector = null } = {}) {
+export async function ensureCA(dir, { protector = null, domains = null } = {}) {
   const certPath = path.join(dir, 'rootCA.pem');
   const keyPath = path.join(dir, 'rootCA.key.pem');
   const encPath = path.join(dir, 'rootCA.key.enc');
+  const metaPath = path.join(dir, 'rootCA.meta.json');
+  const readDomains = () => {
+    try {
+      const d = JSON.parse(fs.readFileSync(metaPath, 'utf8')).domains;
+      return Array.isArray(d) && d.length ? d : null;
+    } catch {
+      return null; // CA прошлых версий: без ограничений
+    }
+  };
 
   const readKey = async () => {
     if (protector && fs.existsSync(encPath)) return protector.decrypt(fs.readFileSync(encPath));
@@ -59,6 +107,7 @@ export async function ensureCA(dir, { protector = null } = {}) {
         key: pki.privateKeyFromPem(keyPem),
         certPath,
         created: false,
+        domains: readDomains(),
       };
     }
   }
@@ -75,10 +124,12 @@ export async function ensureCA(dir, { protector = null } = {}) {
   ];
   cert.setSubject(attrs);
   cert.setIssuer(attrs);
+  const constrained = Array.isArray(domains) && domains.length > 0;
   cert.setExtensions([
     { name: 'basicConstraints', cA: true, critical: true },
     { name: 'keyUsage', keyCertSign: true, cRLSign: true, digitalSignature: true, critical: true },
     { name: 'subjectKeyIdentifier' },
+    ...(constrained ? [nameConstraintsExtension(domains)] : []),
   ]);
   cert.sign(keys.privateKey, forge.md.sha256.create());
 
@@ -88,12 +139,27 @@ export async function ensureCA(dir, { protector = null } = {}) {
   fs.writeFileSync(certPath, certPem, 'utf8');
   if (protector) fs.writeFileSync(encPath, await protector.encrypt(keyPem), { mode: 0o600 });
   else fs.writeFileSync(keyPath, keyPem, { encoding: 'utf8', mode: 0o600 });
-  return { certPem, keyPem, cert, key: keys.privateKey, certPath, created: true };
+  fs.writeFileSync(metaPath, JSON.stringify({ domains: constrained ? domains : null }), 'utf8');
+  return {
+    certPem,
+    keyPem,
+    cert,
+    key: keys.privateKey,
+    certPath,
+    created: true,
+    domains: constrained ? domains : null,
+  };
 }
 
 /** Удалить CA с диска (сертификат из хранилища системы снимает платформенный слой). */
 export function removeCA(dir) {
-  for (const name of ['rootCA.pem', 'rootCA.key.pem', 'rootCA.key.enc', 'BodySnatch Desktop Root CA.crt']) {
+  for (const name of [
+    'rootCA.pem',
+    'rootCA.key.pem',
+    'rootCA.key.enc',
+    'rootCA.meta.json',
+    'BodySnatch Desktop Root CA.crt',
+  ]) {
     fs.rmSync(path.join(dir, name), { force: true });
   }
 }

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { loadConfig, saveConfig } from './config.mjs';
-import { ensureCA, removeCA } from './ca.mjs';
+import { ensureCA, removeCA, baseDomains, domainPermitted } from './ca.mjs';
 import { createProxy } from './proxy.mjs';
 import { createUpstream, parseProxy } from './upstream.mjs';
 import { FileCache } from './fileindex.mjs';
@@ -55,7 +55,8 @@ export async function createEngine({
   const config = loadConfig(configPath, defaultConfigPath);
   const basePort = port || Number(config.port) || 8180;
   config.port = basePort;
-  const ca = await ensureCA(certsDir, { protector });
+  // новый CA ограничивается доменами из масок: украденный ключ не позволит подделать чужие сайты
+  const ca = await ensureCA(certsDir, { protector, domains: baseDomains(compile(config).hostGlobs) });
 
   const files = new FileCache({
     onChange: (names) => {
@@ -84,6 +85,7 @@ export async function createEngine({
     upstream,
     log,
     pac: () => pacText(),
+    canIssue: (host) => domainPermitted(host, ca.domains),
     onLog: (entry) => events.emit('log', entry),
     onChange: () => events.emit('state'),
   });
@@ -187,6 +189,17 @@ export async function createEngine({
       cache.trustAt = 0;
     },
     thumbprint: thumbprintOf(ca.certPem),
+    /** Ограничения корня: какие домены он покрывает и вышли ли за них текущие маски. */
+    caConstraints() {
+      const needed = baseDomains(compile(config).hostGlobs);
+      const wanted = needed || [];
+      return {
+        constrained: !!ca.domains,
+        domains: ca.domains || [],
+        uncovered: ca.domains ? wanted.filter((d) => !domainPermitted(d, ca.domains)) : [],
+        canTighten: !ca.domains && !!needed,
+      };
+    },
     effectiveUpstream: () => config.upstreamProxy || upstreamFromSystem,
     rootPaths,
     hostGlobs: () => compile(config).hostGlobs,

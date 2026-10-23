@@ -57,19 +57,37 @@ export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
                 : 'ещё не установлен'}
             </span>
             <div className="font-mono selectable">отпечаток: {snap.cert.thumbprint}</div>
+            <span>
+              {snap.cert.constraints.constrained
+                ? `ограничен доменами: ${snap.cert.constraints.domains.join(', ')}`
+                : 'без ограничений по доменам'}
+            </span>
           </div>
         </div>
       </div>
 
+      {snap.cert.constraints.uncovered.length ? (
+        <p className="text-sm text-warn" role="status">
+          Маски вышли за пределы сертификата ({snap.cert.constraints.uncovered.join(', ')}): эти сайты не будут
+          подменяться. Перевыпустите сертификат.
+        </p>
+      ) : null}
+
       <div className="flex items-center justify-end gap-2">
-        {trusted ? (
+        {trusted || snap.cert.constraints.uncovered.length || snap.cert.constraints.canTighten ? (
           <Button
             variant="secondary"
             disabled={busy}
             title="Убрать сертификат из системы и удалить ключ; приложение закроется"
-            onClick={() => window.confirm('Удалить сертификат и закрыть приложение?') && void api.certReset()}
+            onClick={() =>
+              window.confirm(
+                'Сертификат будет удалён, приложение закроется. При следующем запуске создастся новый, ограниченный доменами из масок, и его нужно будет установить.',
+              ) && void api.certReset()
+            }
           >
-            Удалить сертификат
+            {snap.cert.constraints.uncovered.length || snap.cert.constraints.canTighten
+              ? 'Перевыпустить сертификат'
+              : 'Удалить сертификат'}
           </Button>
         ) : null}
         {!trusted ? (

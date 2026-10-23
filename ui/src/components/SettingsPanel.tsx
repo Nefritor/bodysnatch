@@ -29,6 +29,23 @@ export const SettingsPanel = ({ snap, onChanged }: SettingsPanelProps) => {
         <PanelHint>{hosts === null ? 'через прокси идёт всё' : `через прокси: ${hosts.length} хост.`}</PanelHint>
       </PanelHead>
 
+      {snap.cert.constraints.uncovered.length ? (
+        <p className="text-xs text-warn" role="status">
+          Сертификат не покрывает: {snap.cert.constraints.uncovered.join(', ')}.{' '}
+          <button
+            type="button"
+            className="underline"
+            onClick={() =>
+              window.confirm(
+                'Сертификат будет удалён, приложение закроется. При следующем запуске создастся новый и его нужно будет установить.',
+              ) && void api.certReset()
+            }
+          >
+            Перевыпустить
+          </button>
+        </p>
+      ) : null}
+
       <label className="flex items-center justify-between gap-3 text-sm text-ink">
         <span>
           Перезагружать страницу при изменении файлов

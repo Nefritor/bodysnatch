@@ -104,6 +104,7 @@ export function makeApi(engine) {
         thumbprint: engine.thumbprint,
         certPath: ca.certPath,
         created: ca.created,
+        constraints: engine.caConstraints(),
       },
       systemProxy: {
         enabled: ours,
