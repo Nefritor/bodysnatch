@@ -1,23 +1,22 @@
 /** Конфигурация прокси: формат совместим с агентом расширения (rules.json). */
 import fs from 'node:fs';
 import path from 'node:path';
+import { touchConfig } from './rules.mjs';
 
 export const DEFAULT_CONFIG = {
   port: 8180,
-  certsDir: 'data/certs',
   /** служебные префиксы пути, которые не входят в локальный путь (например "static/resources") */
   servicePrefixes: [],
   roots: [],
   moduleRoots: {},
   sites: [],
+  /** вышестоящий прокси ("host:port"); пусто — взять прежний системный или идти напрямую */
+  upstreamProxy: '',
+  /** перезагружать страницу при изменении файлов в папках с кодом */
+  liveReload: false,
 };
 
-export function loadConfig(file) {
-  const abs = path.resolve(file);
-  let raw = {};
-  if (fs.existsSync(abs)) {
-    raw = JSON.parse(fs.readFileSync(abs, 'utf8'));
-  }
+export function normalizeConfig(raw) {
   const cfg = { ...DEFAULT_CONFIG, ...raw };
   cfg.sites = Array.isArray(cfg.sites) ? cfg.sites : [];
   cfg.roots = Array.isArray(cfg.roots) ? cfg.roots : [];
@@ -25,15 +24,30 @@ export function loadConfig(file) {
   cfg.servicePrefixes = Array.isArray(cfg.servicePrefixes)
     ? cfg.servicePrefixes.map((p) => String(p || '').trim()).filter(Boolean)
     : [];
+  cfg.upstreamProxy = String(cfg.upstreamProxy || '').trim();
+  cfg.liveReload = cfg.liveReload === true;
+  return cfg;
+}
+
+export function loadConfig(file, fallbackFile = null) {
+  const abs = path.resolve(file);
+  let raw = {};
+  const source = fs.existsSync(abs) ? abs : fallbackFile && fs.existsSync(fallbackFile) ? fallbackFile : null;
+  if (source) raw = JSON.parse(fs.readFileSync(source, 'utf8'));
+  const cfg = normalizeConfig(raw);
   cfg.__path = abs;
   return cfg;
 }
 
+/** Атомарная запись: при сбое посреди записи старый файл остаётся целым. */
 export function saveConfig(cfg) {
-  const target = cfg.__path || cfg.configPath;
+  const target = cfg.__path;
   if (!target) throw new Error('некуда сохранять конфиг');
-  const { __path, ...rest } = cfg;
+  const persistent = Object.fromEntries(Object.entries(cfg).filter(([k]) => !k.startsWith('__')));
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, JSON.stringify(rest, null, 2), 'utf8');
+  const tmp = target + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(persistent, null, 2), 'utf8');
+  fs.renameSync(tmp, target);
+  touchConfig(cfg);
   return target;
 }

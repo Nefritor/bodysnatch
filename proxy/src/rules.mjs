@@ -1,8 +1,9 @@
 /**
  * Чистые правила: маски сайта, поиск сайта по URL и разрешение локального файла.
- * Логика повторяет агент расширения (bodysnatcher/agent/agent.mjs), но без chrome.*,
- * чтобы её можно было использовать в MITM-прокси.
+ * Без chrome.* и без побочных эффектов — используется и прокси, и PAC, и интерфейс.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -53,6 +54,19 @@ export function effectivePatterns(site) {
   return sitePatterns(site);
 }
 
+/**
+ * Хост-часть шаблона (без схемы и порта) в нижнем регистре или null, если по шаблону
+ * нельзя судить о хосте (`<all_urls>`, шаблон без схемы).
+ */
+export function hostOfPattern(pattern) {
+  const p = String(pattern).trim();
+  const at = p.indexOf('://');
+  if (at < 0) return null;
+  const auth = p.slice(at + 3).split('/')[0];
+  const host = auth.replace(/:(\d+|\*)$/, '').toLowerCase();
+  return host || null;
+}
+
 /** Регексп «URL относится к сайту» (любой путь). В Node лимиты RE2 не мешают. */
 export function buildSiteRegex(site) {
   const patterns = effectivePatterns(site);
@@ -68,29 +82,72 @@ export function buildSiteRegex(site) {
   }
 }
 
-const pageRegexCache = new Map();
-export function pageRegex(site) {
-  const key = site.id || effectivePatterns(site).join('|');
-  if (pageRegexCache.has(key)) return pageRegexCache.get(key);
-  const re = buildSiteRegex(site);
-  pageRegexCache.set(key, re);
-  return re;
+/** Шаблон хоста (`*` — любые символы) → регексп. */
+const hostGlobToRegex = (glob) => new RegExp(`^${escapeRe(glob).replace(/\\\*/g, '.*').replace(/\\\?/g, '.')}$`, 'i');
+
+/**
+ * Скомпилированные правила конфига. Кэш хранится на самом конфиге и сбрасывается
+ * через `touchConfig`, поэтому правка маски действует сразу, без перезапуска.
+ */
+export function touchConfig(config) {
+  config.__version = (config.__version || 0) + 1;
+  delete config.__compiled;
+}
+
+export function compile(config) {
+  if (config.__compiled) return config.__compiled;
+  const sites = [];
+  const hostGlobs = new Set();
+  let anyHost = false;
+  for (const site of config.sites || []) {
+    if (!site || site.enabled === false) continue;
+    const re = buildSiteRegex(site);
+    if (!re) continue;
+    const patterns = effectivePatterns(site);
+    sites.push({ site, re, weight: patterns.join('|').length });
+    for (const p of patterns) {
+      const h = hostOfPattern(p);
+      if (h === null) anyHost = true;
+      else hostGlobs.add(h);
+    }
+  }
+  const hostRes = [...hostGlobs].map(hostGlobToRegex);
+  const hostCache = new Map();
+  const compiled = {
+    sites,
+    /** список хостов-шаблонов для PAC; null — перехватывать нужно всё */
+    hostGlobs: anyHost ? null : [...hostGlobs].sort(),
+    matchHost(host) {
+      const h = String(host || '').toLowerCase();
+      if (!sites.length) return false;
+      if (anyHost) return true;
+      const cached = hostCache.get(h);
+      if (cached !== undefined) return cached;
+      const hit = hostRes.some((re) => re.test(h));
+      if (hostCache.size > 5000) hostCache.clear();
+      hostCache.set(h, hit);
+      return hit;
+    },
+  };
+  config.__compiled = compiled;
+  return compiled;
 }
 
 export function pickSite(config, absUrl) {
   let best = null;
-  let bestLen = -1;
-  for (const site of config.sites || []) {
-    if (site.enabled === false) continue;
-    const re = pageRegex(site);
-    if (!re || !re.test(absUrl)) continue;
-    const len = effectivePatterns(site).join('|').length;
-    if (len > bestLen) {
-      best = site;
-      bestLen = len;
+  let bestWeight = -1;
+  for (const entry of compile(config).sites) {
+    if (entry.weight > bestWeight && entry.re.test(absUrl)) {
+      best = entry.site;
+      bestWeight = entry.weight;
     }
   }
   return best;
+}
+
+/** Хост подпадает под маски хотя бы одного включённого сайта? */
+export function hostMatches(config, host) {
+  return compile(config).matchHost(host);
 }
 
 /**
@@ -111,8 +168,14 @@ export function stripServicePrefixes(rel, prefixes = DEFAULT_SERVICE_PREFIXES) {
   return { rel: clean, cut: '' };
 }
 
+/** Путь запроса без ведущих слэшей; битая %-последовательность → null. */
 export function relForSite(site, target) {
-  return decodeURIComponent(target.pathname).replace(/^\/+/, '');
+  try {
+    const rel = decodeURIComponent(target.pathname).replace(/^\/+/, '');
+    return rel.includes('\0') ? null : rel;
+  } catch {
+    return null;
+  }
 }
 
 /** Варианты имени без «.min» и с ним. */
@@ -134,7 +197,21 @@ export function rootsForSite(config, site) {
   return single ? [single] : [];
 }
 
-export function pickRootForModule(config, roots, moduleName) {
+/** Файловые проверки; прокси подставляет кэширующую реализацию. */
+export const syncFs = {
+  isFile(p) {
+    try {
+      return fs.statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  },
+  exists(p) {
+    return fs.existsSync(p);
+  },
+};
+
+export function pickRootForModule(config, roots, moduleName, fsx = syncFs) {
   if (!roots.length) return { root: null, via: 'нет рутов' };
   const explicit = moduleName ? (config.moduleRoots || {})[moduleName] : null;
   if (explicit) {
@@ -143,24 +220,11 @@ export function pickRootForModule(config, roots, moduleName) {
     if (hit) return { root: hit, via: 'выбран пользователем' };
   }
   if (moduleName) {
-    const withModule = roots.find((r) => {
-      try {
-        return fsExistsSync(joinPath(r, moduleName));
-      } catch {
-        return false;
-      }
-    });
+    const withModule = roots.find((r) => fsx.exists(path.join(r, moduleName)));
     if (withModule) return { root: withModule, via: 'первый рут с модулем' };
   }
   return { root: roots[0], via: 'первый рут' };
 }
-
-// ленивый fs, чтобы модуль оставался тестируемым без побочек
-import fs from 'node:fs';
-import path from 'node:path';
-
-const fsExistsSync = (p) => fs.existsSync(p);
-const joinPath = (...p) => path.join(...p);
 
 export function insideRoot(root, file) {
   const r = path.resolve(root);
@@ -172,15 +236,15 @@ export function insideRoot(root, file) {
  * Что отдать на этот URL: локальный файл или серверный.
  * Возвращает { file } | { missing } | { passthrough, reason }.
  */
-export function resolveLocal(config, site, target) {
+export function resolveLocal(config, site, target, fsx = syncFs) {
   if (site.useLocal === false) return { passthrough: true, reason: 'локальный путь отключён' };
 
   const roots = rootsForSite(config, site);
   if (!roots.length) return { passthrough: true, reason: 'нет папок с кодом' };
   const relRaw = relForSite(site, target);
+  if (relRaw === null) return { passthrough: true, reason: 'некорректный путь' };
 
-  const trimmed = stripServicePrefixes(relRaw, config.servicePrefixes);
-  const rel = trimmed.rel;
+  const rel = stripServicePrefixes(relRaw, config.servicePrefixes).rel;
   const moduleName = rel.split('/')[0] || '';
 
   // подменяем только выбранные модули
@@ -188,18 +252,15 @@ export function resolveLocal(config, site, target) {
     return { passthrough: true, reason: 'модуль не выбран', moduleName };
   }
 
-  const { root: active, via } = pickRootForModule(config, roots, moduleName);
+  const { root: active } = pickRootForModule(config, roots, moduleName, fsx);
   const order = [active, ...roots.filter((r) => r !== active)].filter(Boolean);
   for (const root of order) {
     const file = insideRoot(root, path.join(root, rel));
     if (!file) continue;
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-      return { file, via: root === active ? 'mirror' : 'mirror-other', root, moduleName };
-    }
+    if (fsx.isFile(file)) return { file, via: root === active ? 'mirror' : 'mirror-other', root, moduleName };
     for (const alt of minVariants(rel)) {
       const altFile = insideRoot(root, path.join(root, alt));
-      if (!altFile) continue;
-      if (fs.existsSync(altFile) && fs.statSync(altFile).isFile()) {
+      if (altFile && fsx.isFile(altFile)) {
         return { file: altFile, via: root === active ? 'mirror-min' : 'mirror-other-min', root, moduleName };
       }
     }

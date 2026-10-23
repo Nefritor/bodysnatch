@@ -1,325 +1,253 @@
 /**
- * HTTP-API для интерфейса: состояние, конфиг, сертификат, системный прокси.
+ * API интерфейса. Не привязано к HTTP: `api.handle()` принимает метод, путь и тело,
+ * а оболочка (Electron-протокол app:// или отладочный HTTP-сервер) только доставляет вызовы.
+ * Наружу, на порт прокси, API не выставляется.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { saveConfig } from './config.mjs';
+import { execFile } from 'node:child_process';
 import { buildRoots, buildModules, firstSite } from './scan.mjs';
-import * as sysproxy from './sysproxy.mjs';
-import * as certinstall from './certinstall.mjs';
+import { touchConfig } from './rules.mjs';
 
-const json = (res, code, data) => {
-  res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(data));
+const ok = (json = {}) => ({ status: 200, json: { ok: true, ...json } });
+const fail = (message, status = 200, extra = {}) => ({ status, json: { ok: false, error: message, message, ...extra } });
+
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
 };
 
-const readBody = (req) =>
-  new Promise((resolve) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        resolve({});
-      }
-    });
-    req.on('error', () => resolve({}));
-  });
+/** Хост-имя без порта из заголовка Host. */
+export const hostnameOf = (host) => String(host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
 
-export function makeApi({
-  config,
-  ca,
-  proxy,
-  certsDir,
-  snapshot,
-  distDir = null,
-  version = '0.1.0',
-  onQuit = async () => process.exit(0),
-}) {
-  let proxyBefore = snapshot || null;
+export function makeApi(engine) {
+  const { config, proxy, ca, platform } = engine;
 
-  /** Отдать собранный интерфейс (Vite dist) с SPA-фолбэком. */
-  const serveStatic = (req, res) => {
-    if (!distDir || !fs.existsSync(distDir)) {
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-      return res.end('интерфейс не собран: npm run build:ui');
+  /** Статика собранного интерфейса (режим без Electron). */
+  function serveStatic(pathname) {
+    const dist = engine.distDir;
+    if (!dist || !fs.existsSync(dist)) return { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' }, body: 'интерфейс не собран: npm run build:ui' };
+    let rel;
+    try {
+      rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
+    } catch {
+      return { status: 400, headers: {}, body: '' };
     }
-    const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
-    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
-    const abs = path.resolve(distDir, rel);
-    const inside = abs === path.resolve(distDir) || abs.startsWith(path.resolve(distDir) + path.sep);
-    const file = inside && fs.existsSync(abs) && fs.statSync(abs).isFile() ? abs : path.join(distDir, 'index.html');
-    const ext = path.extname(file).toLowerCase();
-    const type =
-      {
-        '.html': 'text/html; charset=utf-8',
-        '.js': 'text/javascript; charset=utf-8',
-        '.css': 'text/css; charset=utf-8',
-        '.png': 'image/png',
-        '.svg': 'image/svg+xml',
-        '.woff2': 'font/woff2',
-        '.woff': 'font/woff',
-      }[ext] || 'application/octet-stream';
-    res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
-    res.end(fs.readFileSync(file));
-  };
+    const root = path.resolve(dist);
+    const abs = path.resolve(root, rel);
+    const inside = abs === root || abs.startsWith(root + path.sep);
+    const file = inside && fs.existsSync(abs) && fs.statSync(abs).isFile() ? abs : path.join(root, 'index.html');
+    return {
+      status: 200,
+      headers: { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' },
+      body: fs.readFileSync(file),
+    };
+  }
 
-  return async function api(req, res) {
-    const url = new URL(req.url, 'http://127.0.0.1');
+  async function state() {
+    const [sys, trusted] = await Promise.all([engine.systemState(), engine.certTrusted()]);
+    const roots = buildRoots(config);
+    const site = firstSite(config);
+    const ours = engine.isOurPac(sys.pacUrl);
+    return {
+      ok: true,
+      version: engine.version,
+      platform: platform.id,
+      enabled: proxy.state.enabled,
+      configPath: config.__path,
+      config: {
+        sites: config.sites,
+        roots: config.roots,
+        moduleRoots: config.moduleRoots,
+        servicePrefixes: config.servicePrefixes,
+        upstreamProxy: config.upstreamProxy,
+        liveReload: config.liveReload,
+      },
+      sites: config.sites,
+      roots,
+      modules: buildModules(config, roots),
+      moduleRoots: config.moduleRoots,
+      mask: (site && site.mask) || { prefixes: [], envs: [], hosts: [], extra: [] },
+      files: (site && site.files) || [
+        { value: 'js', enabled: true },
+        { value: 'css', enabled: true },
+      ],
+      port: engine.port,
+      pacUrl: engine.pacUrl(),
+      hosts: engine.hostGlobs(),
+      upstream: engine.effectiveUpstream(),
+      liveReload: config.liveReload === true,
+      stats: proxy.stats(),
+      cert: {
+        trusted,
+        thumbprint: engine.thumbprint,
+        certPath: ca.certPath,
+        created: ca.created,
+      },
+      systemProxy: { enabled: ours, ours, pacUrl: sys.pacUrl, server: sys.manual.enabled ? sys.manual.server : '', override: '' },
+    };
+  }
+
+  async function open(target) {
+    if (engine.hooks.openPath) return engine.hooks.openPath(target);
+    if (!fs.existsSync(target)) return 'нет такой папки';
+    const [cmd, args] = process.platform === 'darwin' ? ['open', [target]] : ['explorer.exe', [target]];
+    execFile(cmd, args, () => {});
+    return '';
+  }
+
+  /** Обработать вызов API. Возвращает { status, json } | { status, headers, body } | { status, sse }. */
+  async function handle(method, rawUrl, body = {}) {
+    const url = new URL(rawUrl, 'http://app.invalid');
     const route = url.pathname;
-    const method = (req.method || 'GET').toUpperCase();
+    method = String(method || 'GET').toUpperCase();
 
     if (!route.startsWith('/api/')) {
-      if (method === 'GET' || method === 'HEAD') return serveStatic(req, res);
-      res.writeHead(405);
-      return res.end();
+      if (method === 'GET' || method === 'HEAD') return serveStatic(route);
+      return { status: 405, headers: {}, body: '' };
     }
 
-    if (route === '/api/state' && method === 'GET') {
-      const trusted = certinstall.isTrusted(ca.certPem);
-      const sys = sysproxy.getSystemProxy();
-      const roots = buildRoots(config);
-      const site = firstSite(config);
-      return json(res, 200, {
-        ok: true,
-        version,
-        enabled: proxy.state.enabled,
-        configPath: config.__path,
-        config: {
-          sites: config.sites,
-          roots: config.roots,
-          moduleRoots: config.moduleRoots,
-          servicePrefixes: config.servicePrefixes,
-        },
-        sites: config.sites,
-        roots,
-        modules: buildModules(config, roots),
-        moduleRoots: config.moduleRoots,
-        mask: (site && site.mask) || { prefixes: [], envs: [], hosts: [], extra: [] },
-        files: (site && site.files) || [
-          { value: 'js', enabled: true },
-          { value: 'css', enabled: true },
-        ],
-        port: Number(config.port) || 0,
-        stats: proxy.stats(),
-        cert: {
-          trusted,
-          thumbprint: certinstall.thumbprintOf(ca.certPem),
-          certPath: ca.certPath,
-          created: ca.created,
-          install: certinstall.lastInstallResult(),
-          check: certinstall.lastCheckResult(),
-          elevated: sysproxy.isElevated(),
-          lowIntegrity: sysproxy.isLowIntegrity(),
-        },
-        systemProxy: { ...sys, ours: sysproxy.isOurs(Number(config.port) || 0) },
-        proxyWritable: sysproxy.canWriteProxy(),
-        elevated: sysproxy.isElevated(),
-      });
-    }
+    switch (`${method} ${route}`) {
+      case 'GET /api/state':
+        return { status: 200, json: await state() };
 
-    if (route === '/api/log' && method === 'GET') {
-      return json(res, 200, { ok: true, log: proxy.logs.slice(0, Number(url.searchParams.get('n') || 200)) });
-    }
+      case 'GET /api/log':
+        return ok({ log: proxy.logs.slice(0, Math.min(Number(url.searchParams.get('n')) || 200, 500)) });
 
-    if (route === '/api/log/clear' && method === 'POST') {
-      proxy.clearLog();
-      return json(res, 200, { ok: true });
-    }
+      case 'POST /api/log/clear':
+        proxy.clearLog();
+        return ok();
 
-    if (route === '/api/enabled' && method === 'POST') {
-      const body = await readBody(req);
-      return json(res, 200, { ok: true, enabled: proxy.setEnabled(!!body.enabled) });
-    }
+      case 'POST /api/enabled':
+        return ok({ enabled: proxy.setEnabled(!!body.enabled) });
 
-    if (route === '/api/config' && method === 'GET') {
-      return json(res, 200, {
-        ok: true,
-        config: { sites: config.sites, roots: config.roots, moduleRoots: config.moduleRoots },
-      });
-    }
+      case 'GET /api/config':
+        return ok({ config: { sites: config.sites, roots: config.roots, moduleRoots: config.moduleRoots } });
 
-    if (route === '/api/config' && method === 'POST') {
-      const raw = await readBody(req);
-      const body = raw && raw.config && typeof raw.config === 'object' ? raw.config : raw;
-      if (body && Array.isArray(body.sites)) config.sites = body.sites;
-      if (body && Array.isArray(body.roots)) config.roots = body.roots;
-      if (body && body.moduleRoots && typeof body.moduleRoots === 'object') config.moduleRoots = body.moduleRoots;
-      if (body && Array.isArray(body.servicePrefixes)) config.servicePrefixes = body.servicePrefixes;
-      saveConfig(config);
-      return json(res, 200, { ok: true });
-    }
+      case 'POST /api/config': {
+        const src = body && body.config && typeof body.config === 'object' ? body.config : body;
+        if (Array.isArray(src.sites)) config.sites = src.sites;
+        if (Array.isArray(src.roots)) config.roots = src.roots;
+        if (src.moduleRoots && typeof src.moduleRoots === 'object') config.moduleRoots = src.moduleRoots;
+        if (Array.isArray(src.servicePrefixes)) config.servicePrefixes = src.servicePrefixes;
+        if (typeof src.upstreamProxy === 'string') config.upstreamProxy = src.upstreamProxy.trim();
+        if (typeof src.liveReload === 'boolean') config.liveReload = src.liveReload;
+        touchConfig(config);
+        engine.saveConfig();
+        await engine.configChanged();
+        return ok();
+      }
 
-    if (route === '/api/open' && method === 'POST') {
-      const body = await readBody(req);
-      const target = String(body.path || body.root || '');
-      if (!target) return json(res, 400, { ok: false, message: 'не указан путь' });
-      const { spawn } = await import('node:child_process');
-      log('открыть папку: ' + target);
-      // сначала explorer, затем запасной путь через start — на случай,
-      // если explorer недоступен из процесса прокси
-      let lastError = '';
-      for (const [cmd, args] of [
-        ['explorer', [target]],
-        ['cmd', ['/c', 'start', '', target]],
-      ]) {
+      case 'POST /api/module-root': {
+        const module = String(body.module || '');
+        if (!module) return fail('не указан модуль', 400);
+        if (body.root) config.moduleRoots[module] = String(body.root);
+        else delete config.moduleRoots[module];
+        touchConfig(config);
+        engine.saveConfig();
+        engine.events.emit('state');
+        return ok();
+      }
+
+      case 'POST /api/pick-folder': {
+        if (!engine.hooks.pickFolder) return fail('выбор папки доступен только в приложении');
+        const picked = await engine.hooks.pickFolder(String(body.title || 'Выберите папку с кодом'));
+        return picked ? ok({ path: picked }) : fail('отменено');
+      }
+
+      case 'POST /api/open': {
+        const target = String(body.path || body.root || '');
+        if (!target) return fail('не указан путь', 400);
+        const err = await open(target);
+        return err ? fail(err) : ok();
+      }
+
+      case 'POST /api/open-settings':
+        await platform.openProxySettings();
+        return ok();
+
+      case 'POST /api/quit':
+        setTimeout(() => (engine.hooks.quit ? engine.hooks.quit() : process.exit(0)), 100);
+        return ok();
+
+      case 'POST /api/cert/install': {
+        const r = await platform.certInstall({ pem: ca.certPem, file: ca.certPath });
+        engine.invalidateTrust();
+        const trusted = await engine.certTrusted(0);
+        engine.events.emit('state');
+        return { status: 200, json: { ok: !!r.ok && trusted, trusted, error: r.ok ? undefined : r.error } };
+      }
+
+      case 'POST /api/cert/uninstall': {
+        const r = await platform.certUninstall({ pem: ca.certPem, file: ca.certPath });
+        engine.invalidateTrust();
+        engine.events.emit('state');
+        return { status: 200, json: { ok: !!r.ok, trusted: await engine.certTrusted(0) } };
+      }
+
+      case 'POST /api/cert/reset': {
+        // сертификат и ключ удаляются; новый корень появится при следующем запуске
+        await engine.disableSystemProxy().catch(() => {});
+        await engine.resetCA();
+        setTimeout(() => (engine.hooks.quit ? engine.hooks.quit() : process.exit(0)), 300);
+        return ok({ restart: true });
+      }
+
+      case 'GET /api/cert/file':
+        return {
+          status: 200,
+          headers: {
+            'content-type': 'application/x-x509-ca-cert',
+            'content-disposition': 'attachment; filename="BodySnatch Desktop Root CA.crt"',
+          },
+          body: fs.readFileSync(ca.certPath),
+        };
+
+      case 'POST /api/proxy/on':
         try {
-          const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
-          child.on('error', (e) => log('открыть папку: ошибка — ' + String(e.message || e)));
-          child.unref();
-          return json(res, 200, { ok: true, via: cmd });
+          await engine.enableSystemProxy();
+          return ok({ systemProxy: (await state()).systemProxy });
         } catch (e) {
-          lastError = String(e.message || e);
-          log('открыть папку: не удалось — ' + lastError);
+          return fail(String((e && e.message) || e), 200, { manual: true, address: engine.pacUrl() });
         }
-      }
-      return json(res, 200, { ok: false, message: lastError || 'не удалось запустить проводник' });
-    }
 
-    if (route === '/api/quit' && method === 'POST') {
-      json(res, 200, { ok: true });
-      setTimeout(() => {
-        onQuit().catch(() => process.exit(0));
-      }, 100);
-      return undefined;
-    }
+      case 'POST /api/proxy/off':
+        try {
+          await engine.disableSystemProxy();
+          return ok({ systemProxy: (await state()).systemProxy });
+        } catch (e) {
+          return fail(String((e && e.message) || e));
+        }
 
-    if (route === '/api/cert/install' && method === 'POST') {
-      const r = certinstall.install(ca.certPem, certsDir);
-      return json(res, 200, {
-        ok: r.ok,
-        started: !!r.started,
-        via: r.via,
-        file: r.file,
-        error: r.error,
-        last: certinstall.lastInstallResult(),
-        command: certinstall.installCommand(certsDir),
-        trusted: certinstall.isTrusted(ca.certPem),
-      });
-    }
+      case 'GET /api/events':
+        return {
+          status: 200,
+          sse: (send) => {
+            const onLog = (entry) => send('log', entry);
+            const onState = () => send('state', {});
+            const onFiles = (names) => send('files', names);
+            engine.events.on('log', onLog);
+            engine.events.on('state', onState);
+            engine.events.on('files', onFiles);
+            return () => {
+              engine.events.off('log', onLog);
+              engine.events.off('state', onState);
+              engine.events.off('files', onFiles);
+            };
+          },
+        };
 
-    if (route === '/api/cert/uninstall' && method === 'POST') {
-      const ok = certinstall.uninstall(ca.certPem);
-      return json(res, 200, { ok, trusted: certinstall.isTrusted(ca.certPem) });
+      default:
+        return fail('неизвестный маршрут ' + route, 404);
     }
+  }
 
-    if (route === '/api/cert/file' && method === 'GET') {
-      const file = certinstall.writePem(ca.certPem, certsDir);
-      res.writeHead(200, {
-        'content-type': 'application/x-x509-ca-cert',
-        'content-disposition': `attachment; filename="BodySnatch Desktop Root CA.crt"`,
-      });
-      return res.end(fs.readFileSync(file));
-    }
-
-    if (route === '/api/proxy/on' && method === 'POST') {
-      const port = Number(config.port) || 8180;
-      try {
-        proxyBefore = sysproxy.apply(port);
-        const sys = sysproxy.getSystemProxy();
-        return json(res, 200, {
-          ok: true,
-          elevated: !!proxyBefore.elevated,
-          systemProxy: { ...sys, ours: sysproxy.isOurs(port) },
-        });
-      } catch (e) {
-        const cancelled = !!(e && e.cancelled);
-        return json(res, 200, {
-          ok: false,
-          cancelled,
-          error: String((e && e.message) || e),
-          manual: !cancelled,
-          address: `127.0.0.1:${port}`,
-          systemProxy: { ...sysproxy.getSystemProxy(), ours: sysproxy.isOurs(port) },
-        });
-      }
-    }
-
-    if (route === '/api/proxy/repair' && method === 'POST') {
-      const port = Number(config.port) || 8180;
-      const repaired = sysproxy.repairAccess();
-      let enabled = false;
-      let error = '';
-      try {
-        proxyBefore = sysproxy.apply(port);
-        enabled = sysproxy.isOurs(port);
-      } catch (e) {
-        error = String((e && e.message) || e);
-      }
-      const sys = sysproxy.getSystemProxy();
-      return json(res, 200, {
-        ok: enabled,
-        repaired: repaired.repaired,
-        repairErrors: repaired.errors,
-        error,
-        systemProxy: { ...sys, ours: sysproxy.isOurs(port) },
-      });
-    }
-
-    if (route === '/api/proxy/diagnose' && method === 'GET') {
-      return json(res, 200, { ok: true, ...sysproxy.diagnose() });
-    }
-
-    if (route === '/api/open-settings' && method === 'POST') {
-      try {
-        const { spawn } = await import('node:child_process');
-        spawn('cmd', ['/c', 'start', '', 'ms-settings:network-proxy'], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true,
-        }).unref();
-        return json(res, 200, { ok: true });
-      } catch (e) {
-        return json(res, 200, { ok: false, message: String(e.message || e) });
-      }
-    }
-
-    if (route === '/api/proxy/off' && method === 'POST') {
-      const port = Number(config.port) || 8180;
-      const r = sysproxy.restore(proxyBefore, port);
-      const sys = sysproxy.getSystemProxy();
-      return json(res, 200, {
-        ok: r.ok,
-        error: r.ok ? undefined : r.error || 'прокси не выключился',
-        elevated: !!r.elevated,
-        systemProxy: { ...sys, ours: sysproxy.isOurs(port) },
-        machine: r.machine,
-      });
-    }
-
-    if (route === '/api/module-root' && method === 'POST') {
-      const body = await readBody(req);
-      const module = String(body.module || '');
-      if (!module) return json(res, 400, { ok: false, message: 'не указан модуль' });
-      if (body.root) config.moduleRoots[module] = String(body.root);
-      else delete config.moduleRoots[module];
-      saveConfig(config);
-      return json(res, 200, { ok: true });
-    }
-
-    if (route === '/api/pick-folder' && method === 'POST') {
-      // системный диалог выбора папки (Windows): работает и в браузере, и в нативном окне
-      try {
-        const { execFileSync } = await import('node:child_process');
-        const script = [
-          'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
-          '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
-          "$d.Description = 'Выберите папку с кодом'",
-          "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }",
-        ].join('; ');
-        const out = execFileSync('powershell', ['-NoProfile', '-STA', '-Command', script], {
-          encoding: 'utf8',
-          windowsHide: true,
-        });
-        const picked = String(out || '').trim();
-        return json(res, 200, picked ? { ok: true, path: picked } : { ok: false, message: 'отменено' });
-      } catch (e) {
-        return json(res, 200, { ok: false, message: String(e.message || e) });
-      }
-    }
-
-    return json(res, 404, { ok: false, error: 'неизвестный маршрут ' + route });
-  };
+  return { handle, serveStatic };
 }

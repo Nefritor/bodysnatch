@@ -1,118 +1,225 @@
-/**
- * Проверка MITM-прокси на РЕАЛЬНЫХ примерах (настоящий CDN sbis.ru + локальные файлы).
- *
- *   node test/proxy.test.mjs
- */
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
+import http from 'node:http';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../proxy/src/config.mjs';
-import { ensureCA } from '../proxy/src/ca.mjs';
-import { createProxy } from '../proxy/src/proxy.mjs';
+import { startProxy, viaProxy, httpsViaProxy, tmpdir, HOST, makeConfig } from './helpers.mjs';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..');
-const CONFIG = path.resolve(ROOT, '..', 'bodysnatcher', 'baseline', 'rules.working.json');
-const CERTS = path.join(os.tmpdir(), 'bodysnatch-test-certs-' + Date.now());
+const setup = async (siteHandler, extra = {}) => {
+  const root = tmpdir('proxy');
+  fs.mkdirSync(path.join(root, 'mod'));
+  fs.writeFileSync(path.join(root, 'mod', 'Page.js'), 'LOCAL');
+  const ctx = await startProxy({ root, siteHandler, ...extra });
+  return { ...ctx, root };
+};
 
-const curlBin = ['C:\\Windows\\System32\\curl.exe', 'curl'].find((p) => p === 'curl' || fs.existsSync(p));
-const results = [];
-const check = (name, ok, extra = '') => results.push(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`);
-
-const config = loadConfig(CONFIG);
-const ca = ensureCA(CERTS);
-const lines = [];
-const proxy = createProxy({ config, ca, log: (l) => lines.push(l) });
-const addr = await proxy.listen(0);
-const proxyUrl = `http://127.0.0.1:${addr.port}`;
-
-/** curl через прокси; системный schannel-curl требует --ssl-no-revoke для своего CA. */
-let seq = 0;
-const get = (url) =>
-  new Promise((resolve) => {
-    const n = ++seq;
-    const headFile = path.join(CERTS, `h${n}.txt`);
-    const bodyFile = path.join(CERTS, `b${n}.bin`);
-    const child = spawn(
-      curlBin,
-      [
-        '-sS',
-        '--max-time',
-        '30',
-        '--ssl-no-revoke',
-        '-x',
-        proxyUrl,
-        '--cacert',
-        ca.certPath,
-        '-D',
-        headFile,
-        '-o',
-        bodyFile,
-        url,
-      ],
-      { windowsHide: true },
-    );
-    let err = '';
-    child.stderr.on('data', (d) => (err += d));
-    child.on('close', (status) => {
-      const head = fs.existsSync(headFile) ? fs.readFileSync(headFile, 'utf8') : '';
-      const body = fs.existsSync(bodyFile) ? fs.readFileSync(bodyFile, 'utf8') : '';
-      const headers = {};
-      // берём последний блок заголовков (первый — ответ на CONNECT)
-      const blocks = head.split(/\r?\n\r?\n/).filter(Boolean);
-      for (const line of (blocks[blocks.length - 1] || '').split(/\r?\n/).slice(1)) {
-        const i = line.indexOf(':');
-        if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
-      }
-      resolve({ status, headers, body, err });
-    });
+const serverReply = (req, res) => {
+  res.writeHead(200, {
+    'content-type': 'text/javascript',
+    'content-security-policy': "default-src 'none'",
+    'x-frame-options': 'DENY',
+    'cache-control': 'max-age=3600',
+    etag: '"srv"',
   });
+  res.end('SERVER');
+};
 
-const ONLINE = 'https://fix-cdn.sbis.ru/static/resources/Telephony_online/_call/Page.js?x_module=test';
+test('подмена: файл из папки вместо серверного, заголовки и 304', async () => {
+  const t = await setup(serverReply);
+  try {
+    const r = await viaProxy(t.port, `http://${HOST}/mod/Page.js`);
+    assert.equal(r.status, 200);
+    assert.equal(r.body, 'LOCAL');
+    assert.match(r.headers['x-bodysnatch'], /^mirror:/);
+    assert.equal(r.headers['cache-control'], 'no-cache');
+    assert.equal(t.site.seen.length, 0, 'на сервер запрос не ушёл');
 
-// 1) подмена: локальный файл из F:\test\application
-const a = await get(ONLINE);
-check(
-  'HTTPS: Telephony_online/Page.js отдан локальный',
-  a.body.includes('kekw'),
-  `curl=${a.status}, откуда=${a.headers['x-bodysnatch'] || 'сеть'}`,
-);
-check(
-  'заголовок источника — mirror',
-  String(a.headers['x-bodysnatch'] || '').startsWith('mirror'),
-  String(a.headers['x-bodysnatch'] || ''),
-);
+    const again = await viaProxy(t.port, `http://${HOST}/mod/Page.js`, { headers: { 'if-none-match': r.headers.etag } });
+    assert.equal(again.status, 304);
 
-// 2) минифицированное имя находит обычный файл
-const b = await get(ONLINE.replace('Page.js', 'Page.min.js'));
-check('.min.js → локальный Page.js', b.body.includes('kekw'), `откуда=${b.headers['x-bodysnatch'] || 'сеть'}`);
+    const head = await viaProxy(t.port, `http://${HOST}/mod/Page.js`, { method: 'HEAD' });
+    assert.equal(head.status, 200);
+    assert.equal(head.headers['content-length'], '5');
+  } finally {
+    await t.close();
+  }
+});
 
-// 3) другой модуль из другой папки (F:\test2\application)
-const c = await get('https://fix-cdn2.sbis.ru/static/resources/Telephony_utils/_call/Page.js?x_module=test');
-check(
-  'HTTPS: Telephony_utils отдан из второй папки',
-  c.body.includes('kekw'),
-  `откуда=${c.headers['x-bodysnatch'] || 'сеть'}`,
-);
+test('проброс: файла нет — ответ сервера; CSP снят, кэш = no-cache, HEAD реальный', async () => {
+  const t = await setup(serverReply);
+  try {
+    const r = await viaProxy(t.port, `http://${HOST}/mod/None.js`);
+    assert.equal(r.body, 'SERVER');
+    assert.equal(r.headers['content-security-policy'], undefined);
+    assert.equal(r.headers['x-frame-options'], undefined);
+    assert.equal(r.headers['cache-control'], 'no-cache');
+    assert.equal(r.headers.etag, '"srv"');
 
-// 4) модуль не выбран в настройках → запрос уходит на сервер
-const d = await get('https://fix-cdn.sbis.ru/static/resources/Telephony_calls/_call/Page.js?x_module=test');
-check(
-  'невыбранный модуль не подменяется',
-  !d.headers['x-bodysnatch'] && !d.body.includes('kekw'),
-  `статус=${d.status}, откуда=${d.headers['x-bodysnatch'] || 'сеть'}`,
-);
+    await viaProxy(t.port, `http://${HOST}/mod/None.js`, { method: 'HEAD' });
+    assert.equal(t.site.seen.at(-1).method, 'HEAD', 'HEAD дошёл до сервера');
+  } finally {
+    await t.close();
+  }
+});
 
-const passed = results.filter((r) => r.startsWith('ok')).length;
-console.log(results.join('\n'));
-console.log('\nжурнал прокси:');
-for (const l of lines.slice(0, 6)) console.log('  ' + l);
-console.log(`\n${passed}/${results.length} проверок прошло`);
+test('чужой /api/* на подменяемом хосте уходит на сервер, а не в API приложения', async () => {
+  const t = await setup((req, res) => res.end('SITE-API'));
+  try {
+    const r = await viaProxy(t.port, `http://${HOST}/api/users`);
+    assert.equal(r.body, 'SITE-API');
+  } finally {
+    await t.close();
+  }
+});
 
-await proxy.close();
-try {
-  fs.rmSync(CERTS, { recursive: true, force: true });
-} catch {}
-process.exitCode = passed === results.length ? 0 : 1;
+test('кривой URL не роняет процесс', async () => {
+  const t = await setup(serverReply);
+  try {
+    const r = await viaProxy(t.port, `http://${HOST}/mod/%E0%A4%A`);
+    assert.equal(r.status, 200);
+    assert.equal(r.body, 'SERVER');
+  } finally {
+    await t.close();
+  }
+});
+
+test('тело POST доходит до сервера потоком', async () => {
+  let got = '';
+  const t = await setup((req, res) => {
+    req.on('data', (c) => (got += c));
+    req.on('end', () => res.end('ok'));
+  });
+  try {
+    const r = await viaProxy(t.port, `http://${HOST}/mod/save`, { method: 'POST', body: 'payload', headers: { 'content-length': '7' } });
+    assert.equal(r.body, 'ok');
+    assert.equal(got, 'payload');
+  } finally {
+    await t.close();
+  }
+});
+
+test('пауза: подмена выключена, все запросы идут на сервер', async () => {
+  const t = await setup(serverReply);
+  try {
+    t.proxy.setEnabled(false);
+    assert.equal((await viaProxy(t.port, `http://${HOST}/mod/Page.js`)).body, 'SERVER');
+    t.proxy.setEnabled(true);
+    assert.equal((await viaProxy(t.port, `http://${HOST}/mod/Page.js`)).body, 'LOCAL');
+  } finally {
+    await t.close();
+  }
+});
+
+test('HTTPS: хост из маски вскрывается, подмена идёт под нашим сертификатом', async () => {
+  const t = await setup(serverReply);
+  try {
+    const local = await httpsViaProxy(t.port, t.ca, HOST, '/mod/Page.js');
+    assert.equal(local.body, 'LOCAL');
+    const remote = await httpsViaProxy(t.port, t.ca, HOST, '/mod/None.js');
+    assert.equal(remote.body, 'SERVER');
+  } finally {
+    await t.close();
+  }
+});
+
+test('HTTPS: хост вне масок идёт сырым туннелем, без нашего сертификата', async () => {
+  let tunneled = '';
+  const t = await setup(serverReply, { upstreamOpts: { onTunnel: (h, p) => (tunneled = `${h}:${p}`) } });
+  try {
+    // сертификат «банка» нам не выпускался: если бы прокси вскрыл TLS, handshake прошёл бы с нашим CA
+    await new Promise((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port: t.port, method: 'CONNECT', path: 'bank.example.com:443' });
+      req.on('connect', (res, socket) => {
+        assert.equal(res.statusCode, 200);
+        socket.destroy();
+        resolve();
+      });
+      req.on('error', resolve);
+      req.end();
+    });
+    assert.equal(tunneled, 'bank.example.com:443');
+  } finally {
+    await t.close();
+  }
+});
+
+test('PAC отдаётся только на собственном адресе, прочее на loopback — 404', async () => {
+  const t = await setup(serverReply);
+  try {
+    const pac = await viaProxy(t.port, `http://127.0.0.1:${t.port}/proxy.pac`);
+    assert.equal(pac.status, 200);
+    assert.match(pac.headers['content-type'], /proxy-autoconfig/);
+    const other = await viaProxy(t.port, `http://127.0.0.1:${t.port}/api/state`);
+    assert.equal(other.status, 404);
+  } finally {
+    await t.close();
+  }
+});
+
+test('WebSocket/Upgrade доходит до сервера и работает в обе стороны', async () => {
+  const root = tmpdir('ws');
+  const t = await startProxy({ root, siteHandler: (req, res) => res.end('x') });
+  t.site.server.on('upgrade', (req, socket) => {
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: echo\r\nConnection: Upgrade\r\n\r\n');
+    socket.on('data', (d) => socket.write(Buffer.from('echo:' + d)));
+    socket.on('end', () => socket.end());
+  });
+  try {
+    const got = await new Promise((resolve, reject) => {
+      const req = http.request({
+        host: '127.0.0.1',
+        port: t.port,
+        path: `http://${HOST}/ws`,
+        headers: { host: HOST, connection: 'Upgrade', upgrade: 'echo' },
+      });
+      req.on('upgrade', (res, socket) => {
+        socket.write('ping');
+        socket.once('data', (d) => {
+          socket.destroy();
+          resolve(String(d));
+        });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(got, 'echo:ping');
+  } finally {
+    await t.close();
+  }
+});
+
+test('live reload: в HTML вставляется скрипт, события доходят до страницы', async () => {
+  const root = tmpdir('live');
+  fs.mkdirSync(path.join(root, 'mod'));
+  const config = makeConfig(root, { liveReload: true });
+  const t = await startProxy({
+    root,
+    config,
+    siteHandler: (req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<html><head></head><body>hi</body></html>');
+    },
+  });
+  try {
+    const page = await viaProxy(t.port, `http://${HOST}/index.html`, { headers: { accept: 'text/html' } });
+    assert.match(page.body, /<script src="\/__bodysnatch\/livereload\.js"><\/script><\/head>/);
+    assert.equal(Number(page.headers['content-length']), Buffer.byteLength(page.body));
+
+    const message = await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: t.port, path: `http://${HOST}/__bodysnatch/events`, headers: { host: HOST } }, (res) => {
+        res.on('data', (c) => {
+          const text = String(c);
+          if (text.startsWith('data:')) {
+            req.destroy();
+            resolve(text);
+          } else t.proxy.notifyFilesChanged(['a.css']);
+        });
+      });
+      req.on('error', (e) => (e.code === 'ECONNRESET' ? null : reject(e)));
+      req.end();
+    });
+    assert.match(message, /"type":"css"/);
+  } finally {
+    await t.close();
+  }
+});
