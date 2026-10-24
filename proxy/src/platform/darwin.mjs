@@ -43,6 +43,19 @@ export async function proxyState() {
   };
 }
 
+/** Разбор вывода scutil --proxy: какой PAC реально действует в системе (с учётом VPN). */
+export function parseScutilProxy(text) {
+  const on = /ProxyAutoConfigEnable\s*:\s*1/.test(text);
+  const url = /ProxyAutoConfigURLString\s*:\s*(\S+)/.exec(text)?.[1] || '';
+  return { pacUrl: on ? url : '' };
+}
+
+/** Что система применяет на самом деле: активный VPN-туннель может переопределить настройки служб. */
+export async function effectiveProxy() {
+  const r = await run('scutil', ['--proxy']);
+  return r.ok ? parseScutilProxy(r.stdout) : null;
+}
+
 const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
 /** Выполнить набор команд networksetup; при отказе в правах — один запрос пароля администратора. */

@@ -5,7 +5,7 @@ export { Spinner } from './Spinner.js';
 export { Progress } from './Progress.js';
 export type { ProgressProps } from './Progress.js';
 
-export { IconCheck, IconChevron, IconChevronDown, IconClose, IconMore, IconPlus } from './icons.js';
+export { IconCheck, IconChevron, IconChevronDown, IconClose, IconGear, IconMore, IconPlus } from './icons.js';
 export type { IconProps } from './icons.js';
 
 export { Switch } from './Switch.js';

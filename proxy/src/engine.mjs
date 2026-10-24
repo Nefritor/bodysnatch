@@ -14,6 +14,8 @@ import { buildPac } from './pac.mjs';
 import { compile } from './rules.mjs';
 import { platform as defaultPlatform, thumbprintOf } from './platform/index.mjs';
 import { makeApi } from './api.mjs';
+import { launchBrowser } from './browser.mjs';
+import os from 'node:os';
 import { createHash } from 'node:crypto';
 
 /** "http=a:1;https=b:2" или "a:1" → "a:1" */
@@ -113,7 +115,10 @@ export async function createEngine({
   };
   const clearSnapshot = () => fs.rmSync(snapshotFile, { force: true });
 
-  const cache = { sys: null, sysAt: 0, trust: false, trustAt: 0 };
+  const cache = { sys: null, sysAt: 0, trust: false, trustAt: 0, eff: null, effAt: 0 };
+  /** Когда включили PAC: сразу после этого система ещё может не успеть его применить. */
+  let enabledAt = 0;
+  const SETTLE_MS = 3000;
 
   async function systemState(maxAge = 1500) {
     if (cache.sys && Date.now() - cache.sysAt < maxAge) return cache.sys;
@@ -139,7 +144,35 @@ export async function createEngine({
     upstreamFromSystem = previous && previous.manual?.enabled ? manualServer(previous.manual.server) : '';
     await platform.setPac(pacUrl());
     cache.sys = null;
+    enabledAt = Date.now();
+    // через паузу интерфейс перепроверит, применила ли система PAC на самом деле
+    setTimeout(() => events.emit('state'), SETTLE_MS + 200).unref();
     events.emit('state');
+  }
+
+  /**
+   * Наш PAC записан в настройки, но система его не применяет: активный VPN (Packet Tunnel и т. п.)
+   * перекрывает системный прокси. Проверяется только там, где платформа умеет спросить, что
+   * действует на самом деле (macOS); на остальных всегда false.
+   */
+  async function proxyOverridden(maxAge = 1500) {
+    if (!platform.effectiveProxy || !enabledAt || Date.now() - enabledAt < SETTLE_MS) return false;
+    if (!cache.eff || Date.now() - cache.effAt >= maxAge) {
+      cache.eff = await platform.effectiveProxy().catch(() => null);
+      cache.effAt = Date.now();
+    }
+    return !!cache.eff && !isOurPac(cache.eff.pacUrl);
+  }
+
+  /** Запустить Chrome/Edge с PAC и доверием к корню прямо во флагах — в обход системных настроек. */
+  function openBrowser() {
+    return launchBrowser({
+      platformId: platform.id,
+      pacUrl: pacUrl(),
+      certPem: ca.certPem,
+      profileDir: path.join(stateDir, 'chrome-profile'),
+      home: os.homedir(),
+    });
   }
 
   async function disableSystemProxy() {
@@ -150,6 +183,7 @@ export async function createEngine({
     }
     clearSnapshot();
     cache.sys = null;
+    enabledAt = 0;
     events.emit('state');
   }
 
@@ -184,6 +218,8 @@ export async function createEngine({
     pacText,
     isOurPac,
     systemState,
+    proxyOverridden,
+    openBrowser,
     certTrusted,
     invalidateTrust: () => {
       cache.trustAt = 0;

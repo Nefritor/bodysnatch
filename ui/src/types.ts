@@ -40,7 +40,15 @@ export type Config = {
   liveReload?: boolean;
 };
 
-export type SystemProxy = { enabled: boolean; server: string; override: string; ours: boolean; pacUrl?: string };
+export type SystemProxy = {
+  enabled: boolean;
+  server: string;
+  override: string;
+  ours: boolean;
+  pacUrl?: string;
+  /** PAC записан, но система его не применяет (например, из-за VPN) */
+  overridden?: boolean;
+};
 
 export type CertState = {
   trusted: boolean;

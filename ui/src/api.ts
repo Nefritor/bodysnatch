@@ -42,6 +42,7 @@ export const api = {
   proxyOn: () =>
     post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/on', {}, 200000),
   proxyOff: () => post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/off', {}),
+  openBrowser: () => post<{ ok: boolean; browser?: string; error?: string }>('/api/browser/open', {}),
   openSettings: () => post<{ ok: boolean }>('/api/open-settings', {}),
   quit: () => post<{ ok: boolean }>('/api/quit', {}),
   /** команды окну приложения: в обычном браузере это no-op */

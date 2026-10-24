@@ -112,6 +112,7 @@ export function makeApi(engine) {
         pacUrl: sys.pacUrl,
         server: sys.manual.enabled ? sys.manual.server : '',
         override: '',
+        overridden: ours && (await engine.proxyOverridden()),
       },
     };
   }
@@ -241,6 +242,14 @@ export function makeApi(engine) {
         } catch (e) {
           return fail(String((e && e.message) || e), 200, { manual: true, address: engine.pacUrl() });
         }
+
+      case 'POST /api/browser/open': {
+        // в браузере без подмены открывать нечего: включаем её вместе с запуском
+        proxy.setEnabled(true);
+        const r = engine.openBrowser();
+        engine.events.emit('state');
+        return r.ok ? ok({ browser: r.browser }) : fail(r.error);
+      }
 
       case 'POST /api/proxy/off':
         try {

@@ -9,20 +9,24 @@ import { TitleBar } from './components/index.js';
 import { CertScreen, ProxyScreen, RulesScreen, RunningScreen, SplashScreen } from './screens/index.js';
 import { STEPS, Step } from './constants.js';
 import { cn } from './ui/cn.js';
+import { startStep } from './lib/startStep.js';
 
 const WELCOMED_KEY = 'bodysnatch.welcomed';
 
 export function App() {
   const { state, error, refresh, log, clearLog } = useBodysnatch();
-  const [step, setStep] = useState<Step>(() => {
+  // Шаг выбирается по первому снимку состояния (см. startStep); до этого — null.
+  // ?screen=… — отладочный переход сразу на нужный экран.
+  const [chosen, setStep] = useState<Step | null>(() => {
     try {
       const screen = new URLSearchParams(window.location.search).get('screen');
       const known = [Step.Cert, Step.Proxy, Step.Rules, Step.Work] as string[];
-      return screen && known.includes(screen) ? (screen as Step) : Step.Cert;
+      return screen && known.includes(screen) ? (screen as Step) : null;
     } catch {
-      return Step.Cert;
+      return null;
     }
   });
+  const step = chosen ?? Step.Cert;
   // Приветствие показывается один раз, при первом запуске (?splash=1 — показать снова)
   const [splash, setSplash] = useState(() => {
     try {
@@ -54,7 +58,7 @@ export function App() {
   // Сообщаем окну, что мастер пройден: только на рабочем экране «закрыть» уходит
   // в трей, на этапах настройки приложение закрывается полностью.
   useEffect(() => {
-    if (!native) return;
+    if (!native || chosen === null) return;
     if (splash) {
       api.shell('resize', { w: 600, h: 400 });
       return;
@@ -64,7 +68,7 @@ export function App() {
       api.shell('step', { step });
       api.shell('resize', { w: stepData.size.w, h: stepData.size.h });
     }
-  }, [native, step, splash]);
+  }, [native, step, chosen, splash]);
 
   // Окно шага подгоняется под содержимое: высота из constants.ts — минимум, а если содержимое стало
   // выше (блок с ошибкой, предупреждение, длинное сообщение), окно вырастает, чтобы ничего не обрезалось,
@@ -142,6 +146,7 @@ export function App() {
   useEffect(() => {
     if (!state || initialized.current) return;
     initialized.current = true;
+    setStep((current) => current ?? startStep(state));
     setMask(state.mask);
     setFiles(state.files);
   }, [state]);
@@ -250,6 +255,15 @@ export function App() {
               </button>
             );
           })}
+          {state.cert.trusted && state.cert.constraints.uncovered.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => setStep(Step.Work)}
+              className="ml-auto rounded-pill px-2.5 py-0.5 text-xs font-medium text-brand hover:text-brand-deep"
+            >
+              К работе →
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -294,6 +308,7 @@ export function App() {
             onClearLog={() => void clearLog()}
             busy={busy}
             onToggle={(on) => run(() => Promise.all([api.setEnabled(on), on ? api.proxyOn() : api.proxyOff()]))}
+            onSettings={() => setStep(Step.Cert)}
             rulesSlot={
               <RulesScreen
                 snap={state}

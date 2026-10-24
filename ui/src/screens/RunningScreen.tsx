@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { api } from '../api.js';
 import type { LogEntry, Snapshot } from '../types.js';
 import { Switch } from '../components/index.js';
-import { IconChevron, IconClose } from '../components/icons.js';
+import { IconChevron, IconClose, IconGear } from '../components/icons.js';
 import { Badge } from '../ui/Badge.js';
 import { Button } from '../ui/Button.js';
 import { Input } from '../ui/Input.js';
@@ -20,6 +20,8 @@ export type RunningScreenProps = {
   log: LogEntry[];
   onClearLog: () => void;
   onToggle: (on: boolean) => void;
+  /** вернуться в мастер настройки */
+  onSettings: () => void;
   /** готовый блок правил — показывается под спойлером */
   rulesSlot: ReactNode;
 };
@@ -67,7 +69,7 @@ const SETTLE_MS = 60;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
-export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot }: RunningScreenProps) => {
+export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, onSettings, rulesSlot }: RunningScreenProps) => {
   const [filter, setFilter] = useState<Filter>('mirror');
   const [query, setQuery] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -78,6 +80,23 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     if (pending !== null && snap.enabled === pending) setPending(null);
   }, [snap.enabled, pending]);
   const checked = pending ?? snap.enabled;
+
+  // отдельный Chrome с подменой: работает в обход системных настроек (и VPN)
+  const [browserNote, setBrowserNote] = useState('');
+  const [browserBusy, setBrowserBusy] = useState(false);
+  const openBrowser = async () => {
+    setBrowserBusy(true);
+    setBrowserNote('');
+    try {
+      const res = await api.openBrowser();
+      setBrowserNote(res.ok ? `${res.browser} открыт в отдельном профиле` : res.error || 'не удалось открыть браузер');
+    } catch (e) {
+      setBrowserNote(String((e as Error)?.message || e));
+    } finally {
+      setBrowserBusy(false);
+    }
+  };
+  const overridden = Boolean(snap.systemProxy.overridden);
 
   // только подмены локальными файлами, последние 100, с поиском по содержимому
   const rows = useMemo(() => {
@@ -153,6 +172,12 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     };
   }, [rulesOpen, queriesOpen, rows.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // предупреждение появилось или исчезло — окно следует за содержимым
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => resizeTo(bottom()));
+    return () => window.cancelAnimationFrame(id);
+  }, [overridden, browserNote]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // начальный размер рабочего экрана: по факту отрисовки
   useEffect(() => {
     const id = window.requestAnimationFrame(() => resizeTo(bottom()));
@@ -179,11 +204,39 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
             title={checked ? 'Приостановить подмену' : 'Включить подмену'}
             disabled={busy}
           />
+          <Button
+            size="round"
+            variant="secondary"
+            className="ml-auto size-8 shrink-0"
+            onClick={onSettings}
+            title="Мастер настройки"
+            aria-label="Мастер настройки"
+          >
+            <IconGear size={15} />
+          </Button>
         </div>
         <div className="text-xs text-ink-muted">
           прокси {snap.systemProxy.ours ? 'включён' : 'выключен'} · порт {snap.port} · модулей{' '}
           {Object.keys(snap.moduleRoots || {}).length} · локальных ответов {snap.stats.local}
         </div>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs">
+          <button
+            type="button"
+            className="text-brand hover:text-brand-deep disabled:opacity-50"
+            onClick={() => void openBrowser()}
+            disabled={browserBusy}
+            title="Отдельное окно Chrome (или Edge) со своим профилем: подмена работает независимо от системных настроек и VPN"
+          >
+            Открыть Chrome с подменой
+          </button>
+          {browserNote ? <span className="text-ink-muted">{browserNote}</span> : null}
+        </div>
+        {overridden ? (
+          <p className="rounded-lg border border-warn/35 bg-warn/12 px-3 py-2 text-xs text-warn" role="status">
+            Системный прокси не применяется: его перекрывает VPN или другое приложение, поэтому обычные браузеры подмену
+            не получат. Откройте Chrome с подменой — он работает в обход системных настроек.
+          </p>
+        ) : null}
       </div>
 
       <section className="lg rounded-card px-3 py-2">
