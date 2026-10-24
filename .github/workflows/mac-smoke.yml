@@ -15,26 +15,27 @@ jobs:
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run build
-      - name: Сборка .app (arm64)
-        run: npx electron-builder --mac dir --arm64 --publish never
+      - name: Сборка dmg (arm64)
+        run: npx electron-builder --mac dmg --arm64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Подпись и Gatekeeper (как скачано из браузера)
         run: |
-          APP="release/mac-arm64/BodySnatch.app"
-          echo "== codesign до подписи"; codesign -dv --verbose=4 "$APP" 2>&1 || true
-          echo "== codesign --verify"; codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 || true
-          xattr -w com.apple.quarantine "0083;5f5f5f5f;Chrome;" "$APP"
-          echo "== spctl с карантином (без подписи)"; spctl -a -vv "$APP" 2>&1 || true
-          codesign --force --deep --sign - "$APP"
-          echo "== codesign после ad-hoc"; codesign -dv --verbose=2 "$APP" 2>&1 || true
-          echo "== spctl с карантином (ad-hoc)"; spctl -a -vv "$APP" 2>&1 || true
+          DMG=$(ls release/*-mac-arm64.dmg)
+          xattr -w com.apple.quarantine "0083;5f5f5f5f;Chrome;" "$DMG"
+          hdiutil attach "$DMG" -mountpoint /Volumes/BS -nobrowse -quiet
+          cp -R /Volumes/BS/BodySnatch.app "$RUNNER_TEMP/BodySnatch.app"
+          hdiutil detach /Volumes/BS -quiet
+          APP="$RUNNER_TEMP/BodySnatch.app"
+          echo "== codesign"; codesign -dv --verbose=2 "$APP" 2>&1 || true
+          echo "== codesign --verify (должно пройти без ошибок)"; codesign --verify --deep --strict --verbose=2 "$APP" 2>&1
+          echo "== spctl (ad-hoc без нотаризации: rejected — ожидаемо)"; spctl -a -vv "$APP" 2>&1 || true
           xattr -cr "$APP"
+          echo "APP=$APP" >> "$GITHUB_ENV"
 
       - name: Запуск приложения
         run: |
-          APP="release/mac-arm64/BodySnatch.app"
           export BODYSNATCH_DATA_DIR="$RUNNER_TEMP/bs-data"
           "$APP/Contents/MacOS/BodySnatch" --remote-debugging-port=9333 > "$RUNNER_TEMP/app.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/app.pid"

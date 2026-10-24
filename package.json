@@ -101,6 +101,7 @@
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false
-    }
+    },
+    "afterPack": "scripts/adhoc-sign.cjs"
   }
 }
