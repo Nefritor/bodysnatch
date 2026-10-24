@@ -44,7 +44,7 @@ jobs:
       - name: Сертификат (кодом приложения)
         run: |
           echo "== до"; node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('trusted:',j.cert.trusted)})" || true
-          echo "== установка (ждём до 90 с)"; node scripts/cdp-call.mjs POST /api/cert/install 90000 || true
+          echo "== установка (ждём до 45 с)"; node scripts/cdp-call.mjs POST /api/cert/install 45000 || true
           echo "== после"; node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('trusted:',j.cert.trusted)})" || true
           echo "== доверенные корни системы (BodySnatch)"; security find-certificate -a -c "BodySnatch" -Z 2>&1 | head -5 || true
 
@@ -56,6 +56,8 @@ jobs:
             echo "приложение не смогло установить сертификат; ставим через sudo в системную связку, чтобы проверить остальное"
             sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$BODYSNATCH_DATA_DIR/certs/rootCA.pem"
           fi
+          echo "== приложение после запасной установки: сертификат доверенный?"
+          node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log('trusted:',JSON.parse(s).cert.trusted))"
 
       - name: Системный прокси (кодом приложения)
         run: |

@@ -95,14 +95,45 @@ export async function certTrusted({ file }) {
   return r.ok;
 }
 
-/** macOS попросит пароль или Touch ID в собственном окне. */
+const SYSTEM_KEYCHAIN = '/Library/Keychains/System.keychain';
+
+/** Выполнить команды от администратора: macOS покажет своё окно с запросом пароля. */
+async function asAdmin(commands, prompt) {
+  const script = commands.join('; ');
+  const apple = `do shell script "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" with administrator privileges with prompt "${prompt}"`;
+  return run('osascript', ['-e', apple], { timeout: 180000 });
+}
+
+/**
+ * Установка корневого сертификата в системную связку с доверием для всех пользователей.
+ *
+ * Раньше сертификат ставился в связку «Вход» (`security add-trusted-cert` без прав администратора),
+ * но тогда macOS ждёт отдельного окна подтверждения доверия, и без него команда зависает, а Chrome
+ * сертификату не доверяет. Здесь запрос один и обычный: пароль администратора.
+ * Если окно не удалось показать или пароль не введён, возвращается готовая команда для терминала.
+ */
 export async function certInstall({ file }) {
-  const r = await run('security', ['add-trusted-cert', '-r', 'trustRoot', '-k', KEYCHAIN, file], { timeout: 180000 });
-  return r.ok ? { ok: true } : { ok: false, error: r.stderr.trim().slice(0, 200) };
+  const command = `security add-trusted-cert -d -r trustRoot -k ${shq(SYSTEM_KEYCHAIN)} ${shq(file)}`;
+  const r = await asAdmin([command], 'BodySnatch: установить сертификат для подмены HTTPS');
+  if (r.ok) return { ok: true };
+  const cancelled = /-128|canceled|cancelled|отмен/i.test(r.stderr);
+  return {
+    ok: false,
+    error: cancelled
+      ? 'установка отменена'
+      : r.stderr.trim().slice(0, 200) || 'не удалось запросить пароль администратора',
+    manual: `sudo ${command}`,
+  };
 }
 
 export async function certUninstall({ pem, file }) {
+  const sha1 = thumbprintOf(pem);
+  // следы старой установки в связке «Вход» (прошлые версии)
   await run('security', ['remove-trusted-cert', file]);
-  const r = await run('security', ['delete-certificate', '-Z', thumbprintOf(pem), KEYCHAIN]);
+  await run('security', ['delete-certificate', '-Z', sha1, KEYCHAIN]);
+  const r = await asAdmin(
+    [`security remove-trusted-cert -d ${shq(file)}`, `security delete-certificate -Z ${sha1} ${shq(SYSTEM_KEYCHAIN)}`],
+    'BodySnatch: убрать сертификат из системы',
+  );
   return { ok: r.ok };
 }

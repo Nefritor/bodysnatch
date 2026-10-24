@@ -203,7 +203,10 @@ export function makeApi(engine) {
         engine.invalidateTrust();
         const trusted = await engine.certTrusted(0);
         engine.events.emit('state');
-        return { status: 200, json: { ok: !!r.ok && trusted, trusted, error: r.ok ? undefined : r.error } };
+        return {
+          status: 200,
+          json: { ok: !!r.ok && trusted, trusted, error: r.ok ? undefined : r.error, manual: r.manual },
+        };
       }
 
       case 'POST /api/cert/uninstall': {

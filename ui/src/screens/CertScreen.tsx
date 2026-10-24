@@ -15,13 +15,21 @@ export type CertScreenProps = {
 export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
   const trusted = snap.cert.trusted;
   const [phase, setPhase] = useState<'idle' | 'installing' | 'error'>('idle');
+  // причина неудачи и готовая команда для терминала (macOS, если системное окно не удалось показать)
+  const [fail, setFail] = useState<{ error?: string; manual?: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const install = async () => {
     setPhase('installing');
     try {
+      setFail(null);
       const r = await api.certInstall();
-      setPhase(r && r.ok === false ? 'error' : 'idle');
+      if (r && r.ok === false) {
+        setFail({ error: r.error, manual: r.manual });
+        setPhase('error');
+      } else setPhase('idle');
     } catch {
+      setFail({ error: 'нет ответа от системы' });
       setPhase('error');
     }
   };
@@ -65,6 +73,34 @@ export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
           </div>
         </div>
       </div>
+
+      {fail && !trusted ? (
+        <div className="lg-soft flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft" role="status">
+          <span className="text-warn">Не удалось установить{fail.error ? `: ${fail.error}` : ''}.</span>
+          {fail.manual ? (
+            <>
+              <span>Можно выполнить в терминале вручную (потребуется пароль), затем нажать «Далее»:</span>
+              <div className="flex items-start gap-2">
+                <code className="selectable min-w-0 flex-1 rounded-md bg-field px-2 py-1 font-mono text-[11px] break-all text-ink">
+                  {fail.manual}
+                </code>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(fail.manual ?? '').then(() => {
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1500);
+                    });
+                  }}
+                >
+                  {copied ? 'Скопировано' : 'Копировать'}
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       {snap.cert.constraints.uncovered.length ? (
         <p className="text-sm text-warn" role="status">

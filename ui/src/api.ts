@@ -36,7 +36,8 @@ export const api = {
   open: (what: string, extra: Record<string, unknown> = {}) =>
     post<{ ok: boolean; message?: string }>('/api/open', { what, ...extra }),
   // системное окно подтверждения может ждать пользователя долго
-  certInstall: () => post<{ ok: boolean; trusted: boolean; error?: string }>('/api/cert/install', {}, 240000),
+  certInstall: () =>
+    post<{ ok: boolean; trusted: boolean; error?: string; manual?: string }>('/api/cert/install', {}, 240000),
   certReset: () => post<{ ok: boolean; restart?: boolean }>('/api/cert/reset', {}),
   proxyOn: () =>
     post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/on', {}, 200000),
