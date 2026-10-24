@@ -206,7 +206,9 @@ export function App() {
       )}
 
       <div className="min-h-0 flex-1">
-        {step === Step.Cert && <CertScreen snap={state} busy={busy} onNext={() => setStep(Step.Proxy)} />}
+        {step === Step.Cert && (
+          <CertScreen snap={state} busy={busy} onNext={() => setStep(Step.Proxy)} onRefresh={() => void refresh()} />
+        )}
 
         {step === Step.Proxy && (
           <ProxyScreen

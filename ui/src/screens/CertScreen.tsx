@@ -1,5 +1,5 @@
 /** Шаг сертификата. Установка идёт через помощника с запросом прав. */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import type { Snapshot } from '../types.js';
 import { Badge } from '../ui/Badge.js';
@@ -10,14 +10,23 @@ export type CertScreenProps = {
   snap: Snapshot;
   busy: boolean;
   onNext: () => void;
+  /** перечитать состояние (после ручной установки сертификата в терминале) */
+  onRefresh: () => void;
 };
 
-export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
+export const CertScreen = ({ snap, busy, onNext, onRefresh }: CertScreenProps) => {
   const trusted = snap.cert.trusted;
   const [phase, setPhase] = useState<'idle' | 'installing' | 'error'>('idle');
   // причина неудачи и готовая команда для терминала (macOS, если системное окно не удалось показать)
   const [fail, setFail] = useState<{ error?: string; manual?: string } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // пока показана ручная команда, ждём, когда сертификат появится в системе
+  useEffect(() => {
+    if (!fail?.manual || trusted) return undefined;
+    const t = window.setInterval(onRefresh, 2000);
+    return () => window.clearInterval(t);
+  }, [fail, trusted, onRefresh]);
 
   const install = async () => {
     setPhase('installing');
