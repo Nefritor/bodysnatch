@@ -445,148 +445,128 @@
 }
 
 /* ── Анимации ─────────────────────────────────────────────────────────────── */
+@keyframes bs-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6) rotate(-9deg);
+    filter: blur(14px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+/* скобка «вырастает» из центра по вертикали */
+@keyframes bs-grow-y {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.05);
+  }
+
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* стрелка «печатается» слева направо / справа налево */
+@keyframes bs-wipe-r {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes bs-wipe-l {
+  0% {
+    clip-path: inset(0 0 0 100%);
+  }
+
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* после сборки стрелки едва заметно «дышат», как поток данных */
+@keyframes bs-flow-r {
+  0% {
+    transform: translateX(-10px);
+  }
+
+  100% {
+    transform: translateX(14px);
+  }
+}
+
+@keyframes bs-flow-l {
+  0% {
+    transform: translateX(10px);
+  }
+
+  100% {
+    transform: translateX(-14px);
+  }
+}
+
+/* строка текста выезжает из-под маски */
+@keyframes bs-rise {
+  0% {
+    transform: translateY(115%);
+  }
+
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes bs-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes bs-fade-in {
-  from {
+  0% {
     opacity: 0;
     transform: translateY(8px);
   }
 
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes bs-tile {
-  from {
-    opacity: 0;
-    transform: scale(0.82);
-    filter: blur(12px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes bs-brace-left {
-  from {
-    opacity: 0;
-    transform: translateX(-620px) scale(0.86);
-    filter: blur(14px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes bs-brace-right {
-  from {
-    opacity: 0;
-    transform: translateX(620px) scale(0.86);
-    filter: blur(14px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes bs-arrow-blue {
-  0% {
-    opacity: 0;
-    transform: translate(-1500px, -1150px) scale(0.7);
-    filter: blur(12px);
-  }
-
-  55% {
-    opacity: 1;
-    filter: blur(0);
-  }
-
   100% {
     opacity: 1;
     transform: none;
-    filter: blur(0);
   }
 }
 
-@keyframes bs-arrow-green {
-  0% {
-    opacity: 0;
-    transform: translate(1500px, 1150px) scale(0.7);
-    filter: blur(12px);
-  }
-
-  55% {
-    opacity: 1;
-    filter: blur(0);
-  }
-
+@keyframes bs-btn-glow {
+  0%,
   100% {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-@keyframes bs-sheen {
-  from {
-    transform: skewX(-18deg) translateX(0);
+    box-shadow: 0 0 0 0 rgb(66 133 244 / 0%);
   }
 
-  to {
-    transform: skewX(-18deg) translateX(1500px);
-  }
-}
-
-@keyframes bs-glow {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.6);
-  }
-
-  45% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.05);
-  }
-
-  100% {
-    opacity: 0.55;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-@keyframes bs-title {
-  from {
-    opacity: 0;
-    letter-spacing: 0.32em;
-    filter: blur(10px);
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    letter-spacing: 0;
-    filter: blur(0);
-    transform: none;
+  50% {
+    box-shadow: 0 0 0 7px rgb(66 133 244 / 22%);
   }
 }
 
 @keyframes bs-screen-in {
-  from {
+  0% {
     opacity: 0;
     transform: scale(0.985);
   }
 
-  to {
+  100% {
     opacity: 1;
     transform: none;
   }

@@ -55,6 +55,7 @@ let host = null;
 let win = null;
 let tray = null;
 let configured = false;
+let revealWindow = () => {};
 let quitting = false;
 
 // ── движок в отдельном процессе ──────────────────────────────────────────────
@@ -178,8 +179,8 @@ function registerAppProtocol() {
 // ── окно ────────────────────────────────────────────────────────────────────
 function createWindow() {
   win = new BrowserWindow({
-    width: 640,
-    height: 760,
+    width: 600,
+    height: 440,
     minWidth: 600,
     minHeight: 200,
     show: false,
@@ -211,10 +212,28 @@ function createWindow() {
     uiUrl += (uiUrl.includes('?') ? '&' : '?') + 'screen=' + encodeURIComponent(process.env.BODYSNATCH_SCREEN);
   void win.loadURL(uiUrl);
 
-  win.once('ready-to-show', () => {
+  // Окно показывается, когда страница сообщила «готово» (первый кадр отрисован, размер выставлен):
+  // иначе перед заставкой на мгновение мелькает пустое окно другого размера.
+  const reveal = () => {
+    if (!win || win.isDestroyed() || win.isVisible()) return;
+    // Первые кадры нового окна с акрилом — пустая серая плашка. Показываем окно прозрачным и
+    // проявляем, когда содержимое уже на месте.
+    win.setOpacity(0);
     win.show();
+    setTimeout(() => {
+      let step = 0;
+      const timer = setInterval(() => {
+        step += 1;
+        if (!win || win.isDestroyed()) return clearInterval(timer);
+        win.setOpacity(Math.min(1, step / 6));
+        if (step >= 6) clearInterval(timer);
+        return undefined;
+      }, 16);
+    }, 90);
     if (DEV) win.webContents.openDevTools({ mode: 'detach' });
-  });
+  };
+  revealWindow = reveal;
+  setTimeout(reveal, 5000); // страница не ответила — не оставляем приложение невидимым
   // F12 и Ctrl/Cmd+Shift+I: меню у окна нет, поэтому вешаем обработчик сами
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
@@ -301,6 +320,9 @@ ipcMain.on('bs', (event, msg) => {
   if (!msg || typeof msg !== 'object' || !win || event.sender !== win.webContents) return;
   if (msg.bs === 'step' && (msg.step === 'run' || msg.step === 'work')) configured = true;
   switch (msg.bs) {
+    case 'ready':
+      revealWindow();
+      break;
     case 'minimize':
       win.minimize();
       break;

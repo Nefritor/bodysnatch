@@ -1,6 +1,6 @@
 /**
- * Плавно раскрывающийся блок: высота анимируется через grid-template-rows (0fr → 1fr),
- * без измерения содержимого и без перекладки соседей на каждый кадр JS.
+ * Раскрывающийся блок. Содержимое остаётся в дереве и в закрытом виде (grid 0fr), поэтому
+ * его естественную высоту можно измерить заранее и подогнать под неё окно.
  */
 import type { ReactNode, Ref } from 'react';
 import { cn } from './cn.js';
@@ -15,11 +15,7 @@ export type CollapsibleProps = {
 
 export const Collapsible = ({ open, children, className, innerRef }: CollapsibleProps) => (
   <div
-    className={cn(
-      'grid transition-[grid-template-rows,opacity] duration-[320ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]',
-      open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-      className,
-    )}
+    className={cn('grid', open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]', className)}
     // закрытый блок не должен получать фокус клавиатурой
     inert={!open}
   >

@@ -38,8 +38,8 @@ const tailAfterModule = (file: string, module: string) => {
 /** Строка таблицы: фиксированные первые три колонки, последняя — по остатку. */
 const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-3';
 
-/** Длительность сворачивания блока (см. Collapsible): окно подтягивается после неё. */
-const COLLAPSE_MS = 340;
+/** Через сколько после переключения окно подгоняется по факту отрисовки. */
+const SETTLE_MS = 60;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
@@ -91,9 +91,8 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     return Math.ceil(bottom() + delta(rules, rulesBody) + delta(queries, queriesBody));
   };
 
-  // Содержимое раскрывается средствами CSS, окно только заранее освобождает или подтягивает место:
-  // при раскрытии оно растёт первым, при сворачивании — после того, как блок схлопнулся.
-  // Так каждый кадр анимации рисует страница, а не операционная система.
+  // Раскрытие мгновенное. При росте окно получает новый размер на кадр раньше содержимого,
+  // при сворачивании — вместе с ним; потом высота подгоняется по факту отрисовки.
   const timer = useRef<number | null>(null);
   const change = (rules: boolean, queries: boolean) => {
     if (timer.current) window.clearTimeout(timer.current);
@@ -110,8 +109,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
       setQueriesOpen(queries);
       resizeTo(target > 0 ? target : bottom());
     }
-    // когда всё улеглось, подгоняем окно по факту (на случай расхождения с предсказанием)
-    timer.current = window.setTimeout(() => resizeTo(bottom()), COLLAPSE_MS + 60);
+    timer.current = window.setTimeout(() => resizeTo(bottom()), SETTLE_MS);
   };
 
   // начальный размер рабочего экрана: по факту отрисовки
@@ -120,12 +118,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     return () => window.cancelAnimationFrame(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const caret = (open: boolean) => (
-    <IconChevron
-      size={14}
-      className={cn('shrink-0 text-brand transition-transform duration-300', open && 'rotate-90')}
-    />
-  );
+  const caret = (open: boolean) => <IconChevron size={14} className={cn('shrink-0 text-brand', open && 'rotate-90')} />;
 
   const spoilerButton =
     'flex w-full items-center justify-start gap-2 rounded-pill px-3 py-1.5 text-left text-[15px] font-semibold text-brand hover:bg-hover';

@@ -55,7 +55,7 @@ export function App() {
   useEffect(() => {
     if (!native) return;
     if (splash) {
-      api.shell('resize', { w: 600, h: 440 });
+      api.shell('resize', { w: 600, h: 400 });
       return;
     }
     const stepData = STEPS.find(({ key }) => key === step);
@@ -64,6 +64,14 @@ export function App() {
       api.shell('resize', { w: stepData.size.w, h: stepData.size.h });
     }
   }, [native, step, splash]);
+
+  // Окно показывается только когда отрисован первый осмысленный кадр
+  const revealed = useRef(false);
+  useEffect(() => {
+    if (revealed.current || (!state && !error)) return;
+    revealed.current = true;
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => api.shell('ready')));
+  }, [state, error]);
 
   /** Последняя ошибка включения прокси — показывается в подсказке бейджа. */
   const enableProxy = useCallback(async () => {
@@ -152,6 +160,8 @@ export function App() {
   }
 
   if (!state) {
+    // перед заставкой не показываем «Загружаем…»: окно ещё скрыто и появится сразу с приветствием
+    if (splash) return frame(<div />);
     return frame(
       <div className="grid h-full place-items-center lg rounded-card p-6 text-center">
         <h1 className="text-xl font-semibold text-ink">Загружаем настройки…</h1>
