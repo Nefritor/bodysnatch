@@ -17,9 +17,9 @@
     "lint:css": "stylelint \"ui/src/**/*.css\"",
     "lint": "npm run typecheck && npm run format:check && npm run lint:css",
     "icons": "electron scripts/make-icons.cjs",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist": "npm run build && electron-builder --publish never",
     "splash": "electron shell/main.cjs --splash",
     "splash:dev": "electron shell/main.cjs --splash --dev"
   },
