@@ -6,9 +6,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, useBodysnatch } from './api.js';
 import type { MaskOption, SiteMask } from './types.js';
 import { TitleBar } from './components/index.js';
-import { CertScreen, ProxyScreen, RulesScreen, RunningScreen } from './screens/index.js';
+import { CertScreen, ProxyScreen, RulesScreen, RunningScreen, SplashScreen } from './screens/index.js';
 import { STEPS, Step } from './constants.js';
 import { cn } from './ui/cn.js';
+
+const WELCOMED_KEY = 'bodysnatch.welcomed';
 
 export function App() {
   const { state, error, refresh, log, clearLog } = useBodysnatch();
@@ -21,6 +23,25 @@ export function App() {
       return Step.Cert;
     }
   });
+  // Приветствие показывается один раз, при первом запуске (?splash=1 — показать снова)
+  const [splash, setSplash] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('splash') === '1') return true;
+      if (params.get('screen')) return false;
+      return localStorage.getItem(WELCOMED_KEY) !== '1';
+    } catch {
+      return false;
+    }
+  });
+  const finishSplash = useCallback(() => {
+    try {
+      localStorage.setItem(WELCOMED_KEY, '1');
+    } catch {
+      /* приватный режим: приветствие просто покажется снова */
+    }
+    setSplash(false);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [mask, setMask] = useState<SiteMask | null>(null);
   const [files, setFiles] = useState<MaskOption[] | null>(null);
@@ -33,12 +54,16 @@ export function App() {
   // в трей, на этапах настройки приложение закрывается полностью.
   useEffect(() => {
     if (!native) return;
+    if (splash) {
+      api.shell('resize', { w: 600, h: 440 });
+      return;
+    }
     const stepData = STEPS.find(({ key }) => key === step);
     if (stepData) {
       api.shell('step', { step });
       api.shell('resize', { w: stepData.size.w, h: stepData.size.h });
     }
-  }, [native, step]);
+  }, [native, step, splash]);
 
   /** Последняя ошибка включения прокси — показывается в подсказке бейджа. */
   const enableProxy = useCallback(async () => {
@@ -114,7 +139,7 @@ export function App() {
 
   if (error && !state) {
     return frame(
-      <div className="grid h-full place-items-center rounded-window border border-glass-line p-6 text-center shadow-glass bg-glass backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)]">
+      <div className="grid h-full place-items-center lg rounded-card p-6 text-center">
         <div className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-ink">Нет связи с прокси</h1>
           <p className="text-sm text-ink-muted">{error}</p>
@@ -128,18 +153,20 @@ export function App() {
 
   if (!state) {
     return frame(
-      <div className="grid h-full place-items-center rounded-window border border-glass-line p-6 text-center shadow-glass bg-glass backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)]">
+      <div className="grid h-full place-items-center lg rounded-card p-6 text-center">
         <h1 className="text-xl font-semibold text-ink">Загружаем настройки…</h1>
       </div>,
     );
   }
 
+  if (splash) return frame(<SplashScreen version={state.version} onDone={finishSplash} />);
+
   return frame(
     <div
       ref={contentRef}
       className={cn(
-        'flex h-full flex-col gap-3',
-        step !== Step.Work && 'rounded-window border border-glass-line p-6 shadow-glass backdrop-blur-(--glass-blur)',
+        'flex h-full animate-[bs-screen-in_0.7s_cubic-bezier(0.22,1,0.36,1)_both] flex-col gap-3',
+        step !== Step.Work && 'lg rounded-card p-6',
       )}
     >
       {step !== Step.Work && (

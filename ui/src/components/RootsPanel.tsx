@@ -93,10 +93,7 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
         ) : (
           <div className="flex flex-col gap-1.5">
             {roots.map((r) => (
-              <div
-                key={r.path}
-                className="flex items-center gap-2 rounded-md border border-glass-line bg-row px-3 py-1.5 backdrop-blur-md"
-              >
+              <div key={r.path} className="flex items-center gap-2 lg-soft rounded-lg px-3 py-1.5">
                 <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink" title={r.path}>
                   {r.path}
                 </span>

@@ -280,34 +280,18 @@ async function quitApp() {
   app.exit(0);
 }
 
-/** Длительность плавного изменения высоты окна. */
-const RESIZE_MS = 160;
-let resizeTimer = null;
-
-/** Размер окна под текущий шаг. */
+/**
+ * Размер окна под текущий шаг. Меняется сразу, без анимации: плавность даёт сама страница
+ * (раскрытие блоков на CSS), а окно лишь заранее освобождает или подтягивает место.
+ */
 function applyResize(width, height) {
   if (!win) return;
-  const [currentWidth, currentHeight] = win.getContentSize();
+  const [currentWidth] = win.getContentSize();
   const w = width > 0 ? width : currentWidth;
   const area = screen.getDisplayMatching(win.getBounds()).workArea;
   const h = Math.min(height, area.height);
   win.setMinimumSize(w, Math.min(h, 200));
-  clearInterval(resizeTimer);
-  if (!win.isVisible() || w !== currentWidth || Math.abs(h - currentHeight) < 4) {
-    win.setContentSize(w, h);
-    return;
-  }
-  // Плавное изменение высоты. Разовый скачок оставляет на 2–3 кадра окно, в которое
-  // страница ещё не дорисовала новое содержимое, — это и было морганием. Мелкими шагами
-  // видна растущая панель, а не вспышка пустого стекла.
-  const from = currentHeight;
-  const started = Date.now();
-  resizeTimer = setInterval(() => {
-    const p = Math.min(1, (Date.now() - started) / RESIZE_MS);
-    const eased = 1 - Math.pow(1 - p, 3);
-    if (win && !win.isDestroyed()) win.setContentSize(w, Math.round(from + (h - from) * eased));
-    if (p >= 1) clearInterval(resizeTimer);
-  }, 8);
+  win.setContentSize(w, h);
 }
 
 ipcMain.on('bs', (event, msg) => {

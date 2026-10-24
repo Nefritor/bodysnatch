@@ -9,3 +9,4 @@ export type { RulesScreenProps } from './RulesScreen.js';
 
 export { RunningScreen } from './RunningScreen.js';
 export type { RunningScreenProps } from './RunningScreen.js';
+export { SplashScreen } from './SplashScreen.js';

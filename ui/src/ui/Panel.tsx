@@ -12,10 +12,8 @@ export type PanelProps = {
 export const Panel = ({ flat, className, children }: PanelProps) => (
   <section
     className={cn(
-      'flex flex-col gap-2 rounded-panel border border-glass-line pt-3 p-4',
-      flat
-        ? 'bg-transparent'
-        : 'bg-glass shadow-matte backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)]',
+      'flex flex-col gap-2 rounded-panel p-4 pt-3',
+      flat ? 'border border-glass-line bg-transparent' : 'lg',
       className,
     )}
   >

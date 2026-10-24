@@ -1,5 +1,5 @@
 /** Рабочий экран: свитч рядом с названием, правила и запросы — под спойлерами. */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { api } from '../api.js';
 import type { LogEntry, Snapshot } from '../types.js';
@@ -8,6 +8,8 @@ import { IconChevron, IconClose } from '../components/icons.js';
 import { Badge } from '../ui/Badge.js';
 import { Button } from '../ui/Button.js';
 import { Input } from '../ui/Input.js';
+import { Segmented } from '../ui/Segmented.js';
+import { Collapsible } from '../ui/Collapsible.js';
 import { cn } from '../ui/cn.js';
 import { Step, STEPS } from '../constants.js';
 import { highlight } from '../lib/highlight.js';
@@ -39,6 +41,8 @@ const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 p
 /** Высота раскрытых блоков: окно подгоняется под них (см. change). */
 const RULES_H = 590;
 const QUERIES_H = 260;
+/** Длительность сворачивания блока (см. Collapsible): окно подтягивается после неё. */
+const COLLAPSE_MS = 330;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
@@ -47,6 +51,8 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
   const [query, setQuery] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
   const [queriesOpen, setQueriesOpen] = useState(false);
+  // тяжёлый блок правил монтируется при первом раскрытии и дальше остаётся в дереве
+  const [rulesMounted, setRulesMounted] = useState(false);
   // свитч отзывается мгновенно, не дожидаясь опроса состояния
   const [pending, setPending] = useState<boolean | null>(null);
   useEffect(() => {
@@ -78,20 +84,40 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
   const resizeTo = (rules: boolean, queries: boolean) =>
     api.shell('resize', { w: work.w, h: work.h + (rules ? RULES_H : 0) + (queries ? QUERIES_H : 0) });
 
-  // Содержимое меняется сразу, окно подстраивается плавно (см. applyResize в оболочке):
-  // при раскрытии блок «выезжает» вместе с окном, при сворачивании окно подтягивается к блоку.
+  // Раскрытие: окно сразу получает новый размер, а блок плавно «выезжает» в уже готовое место
+  // средствами CSS. Сворачивание наоборот: блок сворачивается, и лишь потом окно подтягивается.
+  // Так каждый кадр анимации рисует страница, а не операционная система.
+  const timer = useRef<number | null>(null);
   const change = (rules: boolean, queries: boolean) => {
-    setRulesOpen(rules);
-    setQueriesOpen(queries);
-    resizeTo(rules, queries);
+    if (timer.current) window.clearTimeout(timer.current);
+    const grow = (rules && !rulesOpen) || (queries && !queriesOpen);
+    if (grow) {
+      resizeTo(rules || rulesOpen, queries || queriesOpen);
+      // следующий кадр: окно уже большое, блок начинает раскрываться
+      window.requestAnimationFrame(() => {
+        setRulesOpen(rules);
+        setQueriesOpen(queries);
+        if (rules) setRulesMounted(true);
+      });
+    } else {
+      setRulesOpen(rules);
+      setQueriesOpen(queries);
+      timer.current = window.setTimeout(() => resizeTo(rules, queries), COLLAPSE_MS);
+    }
   };
 
   // начальный размер рабочего экрана
   useEffect(() => resizeTo(false, false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const caret = (open: boolean) => (
-    <IconChevron size={14} className={cn('shrink-0 text-brand transition-transform', open && 'rotate-90')} />
+    <IconChevron
+      size={14}
+      className={cn('shrink-0 text-brand transition-transform duration-300', open && 'rotate-90')}
+    />
   );
+
+  const spoilerButton =
+    'flex w-full items-center justify-start gap-2 rounded-pill px-3 py-1.5 text-left text-[15px] font-semibold text-brand hover:bg-hover';
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -115,44 +141,29 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
         </div>
       </div>
 
-      <section
-        className={cn(
-          'rounded-window border border-glass-line bg-nested px-4 py-2 shadow-glass',
-          'backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)',
-        )}
-      >
+      <section className="lg rounded-card px-3 py-2">
         <button
           type="button"
-          className={cn(
-            '-mx-1 flex w-[calc(100%+8px)] items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-left',
-            'text-[15px] font-semibold text-brand hover:bg-hover',
-          )}
+          className={spoilerButton}
           onClick={() => change(!rulesOpen, queriesOpen)}
           aria-expanded={rulesOpen}
         >
           {caret(rulesOpen)}
           Правила подмены
         </button>
-        {rulesOpen ? (
-          <div className="pt-2" style={{ height: RULES_H }}>
-            <div className="h-full">{rulesSlot}</div>
-          </div>
-        ) : null}
+        <Collapsible open={rulesOpen}>
+          {rulesMounted ? (
+            <div className="px-1 pt-2" style={{ height: RULES_H }}>
+              <div className="h-full">{rulesSlot}</div>
+            </div>
+          ) : null}
+        </Collapsible>
       </section>
 
-      <section
-        className={cn(
-          'border border-b-0 border-glass-line bg-nested shadow-glass',
-          'backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)',
-          '-ml-[11px] w-[calc(100%+22px)] px-4 pt-2 pb-4',
-        )}
-      >
+      <section className="lg -ml-[11px] w-[calc(100%+22px)] rounded-t-card px-4 pt-2 pb-4">
         <button
           type="button"
-          className={cn(
-            '-mx-1 flex w-[calc(100%+8px)] items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-left',
-            'text-[15px] font-semibold text-brand hover:bg-hover',
-          )}
+          className={spoilerButton}
           onClick={() => change(rulesOpen, !queriesOpen)}
           aria-expanded={queriesOpen}
         >
@@ -161,39 +172,26 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
           <span className="ml-1 text-xs font-normal text-ink-muted">{rows.length}</span>
         </button>
 
-        {queriesOpen ? (
-          <div className="flex flex-col gap-2 pt-2">
+        <Collapsible open={queriesOpen}>
+          <div className="flex flex-col gap-2 pt-2" style={{ height: QUERIES_H - 56 }}>
             <div className="flex items-center gap-2">
               <Input
                 type="search"
                 placeholder="Поиск по журналу"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                className="min-w-0 flex-1"
               />
-              <div className="flex shrink-0 gap-1" role="group" aria-label="Фильтр журнала">
-                {(
-                  [
-                    ['mirror', 'Подмены'],
-                    ['errors', 'Ошибки'],
-                    ['all', 'Все'],
-                  ] as [Filter, string][]
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={filter === key}
-                    onClick={() => setFilter(key)}
-                    className={cn(
-                      'rounded-pill border px-2.5 py-1 text-xs',
-                      filter === key
-                        ? 'border-brand/25 bg-brand-soft font-semibold text-brand'
-                        : 'border-glass-line bg-field text-ink-muted hover:bg-glass-strong',
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                ariaLabel="Фильтр журнала"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { value: 'mirror', label: 'Подмены' },
+                  { value: 'errors', label: 'Ошибки' },
+                  { value: 'all', label: 'Все' },
+                ]}
+              />
               <Button
                 size="sm"
                 variant="secondary"
@@ -207,7 +205,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
               </Button>
             </div>
 
-            <div className="h-[200px] overflow-auto rounded-md border border-glass-line bg-nested">
+            <div className="lg-soft min-h-0 flex-1 overflow-auto rounded-lg">
               {rows.length === 0 ? (
                 <div className="grid h-full place-items-center text-xs text-ink-muted">Пусто</div>
               ) : (
@@ -215,7 +213,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                   <div
                     className={cn(
                       ROW,
-                      'sticky top-0 z-10 border-b border-glass-line bg-surface py-1.5',
+                      'sticky top-0 z-10 border-b border-glass-line bg-surface-glass py-1.5 backdrop-blur-md',
                       'text-[11px] font-semibold tracking-wide text-ink-muted uppercase',
                     )}
                   >
@@ -247,7 +245,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
               )}
             </div>
           </div>
-        ) : null}
+        </Collapsible>
       </section>
     </div>
   );

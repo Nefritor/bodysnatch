@@ -62,7 +62,8 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-panel: 14px;
+  --radius-panel: 20px;
+  --radius-card: 22px;
   --radius-btn: 10px;
   --radius-input: 10px;
   --radius-pill: 999px;
@@ -115,8 +116,21 @@
   --c-accent-soft: rgb(47 111 237 / 12%);
   --c-accent-ink: #fff;
 
-  --glass-blur: 26px;
-  --glass-saturate: 112%;
+  --glass-blur: 28px;
+  --glass-saturate: 165%;
+
+  /* «жидкое стекло»: заливка, световая кромка, блик и тень */
+  --lg-fill: rgb(255 255 255 / 22%);
+  --lg-fill-soft: rgb(255 255 255 / 12%);
+  --lg-fill-hover: rgb(255 255 255 / 34%);
+  --lg-edge: rgb(255 255 255 / 85%);
+  --lg-edge-2: rgb(255 255 255 / 28%);
+  --lg-hair: rgb(17 24 39 / 11%);
+  --lg-sheen: rgb(255 255 255 / 50%);
+  --lg-sheen-2: rgb(255 255 255 / 18%);
+  --lg-glow: rgb(255 255 255 / 14%);
+  --lg-shadow: 0 14px 34px rgb(20 26 40 / 12%), 0 2px 6px rgb(20 26 40 / 6%);
+  --lg-thumb: rgb(255 255 255 / 78%);
 }
 
 /* ── Семейства (светлые) ──────────────────────────────────────────────────── */
@@ -161,6 +175,18 @@
 
   --shadow-matte: 0 14px 32px rgb(0 0 0 / 45%);
   --shadow-glass: 0 14px 32px rgb(0 0 0 / 45%);
+
+  --lg-fill: rgb(255 255 255 / 5.5%);
+  --lg-fill-soft: rgb(255 255 255 / 3.5%);
+  --lg-fill-hover: rgb(255 255 255 / 13%);
+  --lg-edge: rgb(255 255 255 / 34%);
+  --lg-edge-2: rgb(255 255 255 / 9%);
+  --lg-hair: rgb(0 0 0 / 45%);
+  --lg-sheen: rgb(255 255 255 / 10%);
+  --lg-sheen-2: rgb(255 255 255 / 3%);
+  --lg-glow: rgb(255 255 255 / 5%);
+  --lg-shadow: 0 16px 38px rgb(0 0 0 / 42%), 0 2px 6px rgb(0 0 0 / 30%);
+  --lg-thumb: rgb(255 255 255 / 24%);
 }
 
 /* ── База ─────────────────────────────────────────────────────────────────── */
@@ -310,5 +336,185 @@
   button:not(:disabled),
   [role="switch"]:not(:disabled) {
     cursor: pointer;
+  }
+}
+
+/* ── Жидкое стекло ────────────────────────────────────────────────────────────
+   Поверхность = полупрозрачная заливка + размытие с насыщением + световая кромка
+   (сверху ярче, по бокам слабее) + диагональный блик + мягкая тень. */
+@layer components {
+  .lg,
+  .lg-soft,
+  .lg-pill,
+  .lg-thumb {
+    position: relative;
+    isolation: isolate;
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+
+  .lg::before,
+  .lg-soft::before,
+  .lg-pill::before,
+  .lg-thumb::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(135deg, var(--lg-sheen) 0%, transparent 36%, transparent 64%, var(--lg-sheen-2) 100%);
+  }
+
+  .lg {
+    background: var(--lg-fill);
+    box-shadow:
+      0 0 0 1px var(--lg-hair),
+      var(--lg-shadow),
+      inset 0 1px 0 var(--lg-edge),
+      inset 0 -1px 0 var(--lg-edge-2),
+      inset 1px 0 0 var(--lg-edge-2),
+      inset -1px 0 0 var(--lg-edge-2),
+      inset 0 0 24px var(--lg-glow);
+  }
+
+  .lg-soft {
+    background: var(--lg-fill-soft);
+    box-shadow:
+      0 0 0 1px var(--lg-hair),
+      inset 0 1px 0 var(--lg-edge-2),
+      inset 0 0 18px var(--lg-glow);
+  }
+
+  .lg-pill {
+    background: var(--lg-fill);
+    box-shadow:
+      0 0 0 1px var(--lg-hair),
+      0 4px 12px rgb(20 26 40 / 8%),
+      inset 0 1px 0 var(--lg-edge),
+      inset 0 -1px 0 var(--lg-edge-2);
+    transition:
+      background-color 0.18s,
+      box-shadow 0.18s;
+  }
+
+  button.lg-pill:hover:not(:disabled) {
+    background: var(--lg-fill-hover);
+  }
+
+  /* стекло внутри стекла: без второго размытия и с вдвое слабее заливкой */
+  .lg .lg {
+    background: var(--lg-fill-soft);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow:
+      0 0 0 1px var(--lg-hair),
+      inset 0 1px 0 var(--lg-edge-2),
+      inset 0 0 18px var(--lg-glow);
+  }
+
+  .lg .lg::before {
+    opacity: 0.5;
+  }
+
+  /* бегунок переключателя: ярче и выше остальных поверхностей */
+  .lg-thumb {
+    background: var(--lg-thumb);
+    box-shadow:
+      0 0 0 1px var(--lg-hair),
+      0 6px 16px rgb(20 26 40 / 16%),
+      inset 0 1px 0 rgb(255 255 255 / 90%),
+      inset 0 -1px 0 var(--lg-edge-2),
+      inset 0 0 14px rgb(255 255 255 / 22%);
+  }
+
+  [data-mode="dark"] .lg-thumb {
+    box-shadow:
+      0 0 0 1px var(--lg-hair),
+      0 6px 16px rgb(0 0 0 / 40%),
+      inset 0 1px 0 rgb(255 255 255 / 45%),
+      inset 0 -1px 0 var(--lg-edge-2),
+      inset 0 0 14px rgb(255 255 255 / 8%);
+  }
+}
+
+/* ── Анимации ─────────────────────────────────────────────────────────────── */
+@keyframes bs-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bs-brace-left {
+  from {
+    opacity: 0;
+    transform: translateX(-140px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bs-brace-right {
+  from {
+    opacity: 0;
+    transform: translateX(140px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bs-arrow-blue {
+  from {
+    opacity: 0;
+    transform: translate(-300px, -190px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bs-arrow-green {
+  from {
+    opacity: 0;
+    transform: translate(300px, 190px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bs-screen-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
   }
 }

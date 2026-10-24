@@ -39,7 +39,7 @@ export const CertScreen = ({ snap, busy, onNext }: CertScreenProps) => {
           security.enterprise_roots.enabled.
         </p>
 
-        <div className="w-fit rounded-md border border-glass-line bg-nested px-4 py-2.5 backdrop-blur-[var(--glass-blur)] backdrop-saturate-[var(--glass-saturate)]">
+        <div className="w-fit lg-soft rounded-lg px-4 py-2.5">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-ink">Корневой сертификат BodySnatch</span>
             {trusted ? (
