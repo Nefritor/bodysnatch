@@ -4,7 +4,8 @@
  * Подписи лежат в одной ячейке сетки, поэтому ширина кнопки не меняется при смене темы.
  */
 import { useEffect, useState } from 'react';
-import { applyTheme, loadTheme, nextTheme, type ThemeMode } from '../theme.js';
+import { flushSync } from 'react-dom';
+import { applyTheme, loadTheme, nextTheme, switchTheme, type ThemeMode } from '../theme.js';
 import { cn } from '../ui/cn.js';
 
 const MODES: { mode: ThemeMode; label: string }[] = [
@@ -50,7 +51,7 @@ export const ThemeMenu = () => {
     applyTheme(mode);
     if (mode !== 'auto') return undefined;
     const query = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => applyTheme('auto');
+    const onChange = () => switchTheme('auto', () => undefined);
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);
   }, [mode]);
@@ -62,7 +63,10 @@ export const ThemeMenu = () => {
       type="button"
       aria-label="Тема оформления"
       title={`Тема: ${current}`}
-      onClick={() => setMode(nextTheme(mode))}
+      onClick={() => {
+        const next = nextTheme(mode);
+        switchTheme(next, () => flushSync(() => setMode(next)));
+      }}
       className={cn(
         'mr-1 inline-grid h-7 items-center rounded-pill border border-transparent px-2.5 text-xs font-medium',
         'text-ink-soft transition-[background-color,border-color,box-shadow,color] duration-200 hover:text-ink',

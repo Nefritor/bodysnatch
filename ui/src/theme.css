@@ -586,3 +586,18 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* ── Смена темы: один общий кроссфейд ─────────────────────────────────────────
+   Пока идёт смена, собственные переходы элементов выключены: страницу целиком
+   перетекает из старого вида в новый браузер, и ничего не «опаздывает». */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
