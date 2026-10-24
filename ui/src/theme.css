@@ -498,7 +498,7 @@
 /* после сборки стрелки едва заметно «дышат», как поток данных */
 @keyframes bs-flow-r {
   0% {
-    transform: translateX(-10px);
+    transform: translateX(0);
   }
 
   100% {
@@ -508,7 +508,7 @@
 
 @keyframes bs-flow-l {
   0% {
-    transform: translateX(10px);
+    transform: translateX(0);
   }
 
   100% {
