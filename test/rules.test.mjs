@@ -74,6 +74,26 @@ test('битая %-последовательность не роняет раз
   assert.equal(relForSite({}, new URL('https://h.test/a%20b.js')), 'a b.js');
 });
 
+test('поле «Файлы»: подменяются только выбранные расширения', () => {
+  const root = tmpdir('ext');
+  fs.mkdirSync(path.join(root, 'mod'));
+  for (const f of ['a.js', 'a.css', 'a.tmpl', 'b.min.js']) fs.writeFileSync(path.join(root, 'mod', f), 'x');
+  const config = normalizeConfig({ roots: [root], moduleRoots: { mod: root } });
+  const at = (site, p) => resolveLocal(config, site, new URL('https://h.test' + p));
+  const only = (...values) => ({ useLocal: true, files: values.map((value) => ({ value, enabled: true })) });
+
+  assert.ok(at(only('js', 'css'), '/mod/a.js').file);
+  assert.ok(at(only('js', 'css'), '/mod/a.css').file);
+  assert.equal(at(only('js', 'css'), '/mod/a.tmpl').reason, 'расширение не выбрано');
+  assert.ok(at(only('js', 'css', 'tmpl'), '/mod/a.tmpl').file, 'расширение добавили — подмена пошла');
+  assert.ok(at(only('.JS'), '/mod/b.js').file, 'точка и регистр не важны, .min находится');
+  assert.equal(
+    at({ useLocal: true, files: [{ value: 'js', enabled: false }] }, '/mod/a.js').reason,
+    'расширение не выбрано',
+  );
+  assert.ok(at({ useLocal: true }, '/mod/a.tmpl').file, 'без списка фильтра нет');
+});
+
 test('resolveLocal: файл, .min-вариант, выход за корень, неверный модуль', () => {
   const root = tmpdir('rules');
   fs.mkdirSync(path.join(root, 'mod'));

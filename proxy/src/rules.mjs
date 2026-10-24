@@ -178,6 +178,20 @@ export function relForSite(site, target) {
   }
 }
 
+/**
+ * Расширения, которые разрешено подменять (поле «Файлы» в маске): множество в нижнем регистре
+ * или null, если фильтра нет (список не задан или пуст).
+ */
+export function allowedExtensions(site) {
+  const list = site && Array.isArray(site.files) ? site.files : null;
+  if (!list || !list.length) return null;
+  return new Set(
+    list
+      .filter((f) => f && f.enabled !== false && f.value)
+      .map((f) => String(f.value).trim().replace(/^\./, '').toLowerCase()),
+  );
+}
+
 /** Варианты имени без «.min» и с ним. */
 export function minVariants(rel) {
   const out = [];
@@ -246,6 +260,13 @@ export function resolveLocal(config, site, target, fsx = syncFs) {
 
   const rel = stripServicePrefixes(relRaw, config.servicePrefixes).rel;
   const moduleName = rel.split('/')[0] || '';
+
+  // подменяются только файлы с выбранными расширениями
+  const allowed = allowedExtensions(site);
+  if (allowed) {
+    const ext = path.extname(rel).slice(1).toLowerCase();
+    if (!allowed.has(ext)) return { passthrough: true, reason: 'расширение не выбрано', moduleName };
+  }
 
   // подменяем только выбранные модули
   if (moduleName && !(config.moduleRoots || {})[moduleName]) {
