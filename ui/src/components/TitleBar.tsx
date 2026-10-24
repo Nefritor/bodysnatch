@@ -6,6 +6,7 @@
 import { api } from '../api.js';
 import { cn } from '../ui/cn.js';
 import { ThemeMenu } from './ThemeMenu.js';
+import { UpdateButton } from './UpdateButton.js';
 
 export type TitleBarProps = {
   /** подмена работает — влияет только на подпись кнопки закрытия */
@@ -27,6 +28,7 @@ export const TitleBar = ({ running }: TitleBarProps) => {
       <img className="size-4" src="./logo.png" alt="" aria-hidden />
       <span className="text-xs font-semibold text-ink-soft">BodySnatch</span>
       <div className="ml-auto flex items-center self-start [-webkit-app-region:no-drag]">
+        <UpdateButton />
         <ThemeMenu />
         {mac ? null : (
           <>

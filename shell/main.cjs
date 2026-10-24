@@ -10,6 +10,8 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage, scr
 const path = require('node:path');
 const fs = require('node:fs');
 const { createEngineHost } = require('./engine-host.cjs');
+const { createUpdater } = require('./updater.cjs');
+const { spawn } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const DEV = process.argv.includes('--dev') || process.env.BODYSNATCH_DEV === '1';
@@ -57,6 +59,33 @@ let win = null;
 let tray = null;
 let configured = false;
 let revealWindow = () => {};
+/** Скачанный установщик, который нужно запустить после корректного выхода. */
+let pendingInstaller = '';
+
+const updater = createUpdater({
+  currentVersion: require('../package.json').version,
+  log,
+  onState: (s) => {
+    if (win && !win.isDestroyed()) win.webContents.send('bs-update-state', s);
+  },
+  onInstall: (file) => {
+    pendingInstaller = file;
+    void quitApp();
+  },
+});
+
+/** Запустить установщик: на Windows .exe отдельным процессом, на macOS открыть .dmg. */
+function launchInstaller(file) {
+  if (process.env.BODYSNATCH_UPDATE_DRYRUN === '1')
+    return log('установщик (проверочный запуск, не открываем): ' + file);
+  try {
+    if (process.platform === 'win32') spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
+    else void shell.openPath(file);
+    return log('установщик запущен: ' + file);
+  } catch (e) {
+    return log('не удалось запустить установщик: ' + e.message);
+  }
+}
 let quitting = false;
 
 // ── движок в отдельном процессе ──────────────────────────────────────────────
@@ -304,6 +333,8 @@ async function quitApp() {
   }
   tray?.destroy();
   tray = null;
+  // системные настройки уже возвращены, процесс движка остановлен — можно отдавать управление установщику
+  if (pendingInstaller) launchInstaller(pendingInstaller);
   app.exit(0);
 }
 
@@ -324,6 +355,15 @@ function applyResize(width, height) {
   const overflow = b.y + b.height - (area.y + area.height);
   if (overflow > 0) win.setPosition(b.x, Math.max(area.y, b.y - overflow));
 }
+
+// обновления: окно спрашивает состояние и отдаёт команды
+ipcMain.handle('bs-update', (event, action) => {
+  if (!win || event.sender !== win.webContents) return null;
+  if (action === 'check') return updater.check().then(() => updater.state());
+  if (action === 'download') void updater.download();
+  if (action === 'install') updater.install();
+  return updater.state();
+});
 
 ipcMain.on('bs', (event, msg) => {
   if (!msg || typeof msg !== 'object' || !win || event.sender !== win.webContents) return;
@@ -369,6 +409,8 @@ if (!app.requestSingleInstanceLock()) {
       );
     }
     createWindow();
+    win.on('focus', () => updater.maybeCheck());
+    updater.start();
   });
 
   // на macOS закрытие окна не завершает приложение; клик по значку в Dock возвращает окно
