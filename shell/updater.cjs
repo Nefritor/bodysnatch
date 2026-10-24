@@ -25,21 +25,23 @@ const CHECK_EVERY_MS = 30 * 60 * 1000;
 const FIRST_CHECK_MS = Number(process.env.BODYSNATCH_UPDATE_FIRST_MS) || 15 * 1000;
 const FOCUS_RECHECK_MS = 10 * 60 * 1000;
 
-/** Сравнение версий вида 1.2.3 (суффиксы `-beta` отбрасываются). */
+/**
+ * Сравнение версий вида 1.2.3. Суффикс (`1.2.3-a`) — хотфикс той же версии: он новее версии без суффикса,
+ * а между собой суффиксы сравниваются как строки. Предрелизов (beta) мы не выпускаем.
+ */
 function compareVersions(a, b) {
-  const parse = (v) =>
-    String(v)
-      .replace(/^v/i, '')
-      .split('-')[0]
-      .split('.')
-      .map((n) => Number.parseInt(n, 10) || 0);
+  const parse = (v) => {
+    const [base, ...rest] = String(v).replace(/^v/i, '').split('-');
+    return { nums: base.split('.').map((n) => Number.parseInt(n, 10) || 0), tag: rest.join('-') };
+  };
   const x = parse(a);
   const y = parse(b);
-  for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
-    const d = (x[i] || 0) - (y[i] || 0);
+  for (let i = 0; i < Math.max(x.nums.length, y.nums.length); i += 1) {
+    const d = (x.nums[i] || 0) - (y.nums[i] || 0);
     if (d) return d < 0 ? -1 : 1;
   }
-  return 0;
+  if (x.tag === y.tag) return 0;
+  return x.tag > y.tag ? 1 : -1;
 }
 
 /** Нужный установщик из файлов релиза: .exe для Windows, .dmg под архитектуру для macOS. */

@@ -9,6 +9,10 @@ test('сравнение версий', () => {
   assert.equal(compareVersions('v0.2.0', '0.10.0'), -1);
   assert.equal(compareVersions('1.0', '1.0.0'), 0);
   assert.equal(compareVersions('2.0.0-beta.1', '1.9.9'), 1);
+  // хотфикс «a» новее базовой версии, но старее следующей
+  assert.equal(compareVersions('0.1.4-a', '0.1.4'), 1);
+  assert.equal(compareVersions('0.1.4-a', '0.1.5'), -1);
+  assert.equal(compareVersions('0.1.4-b', '0.1.4-a'), 1);
 });
 
 test('выбор установщика под текущую платформу', () => {
