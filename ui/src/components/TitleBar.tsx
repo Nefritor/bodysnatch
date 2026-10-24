@@ -42,7 +42,7 @@ export const TitleBar = ({ running }: TitleBarProps) => {
             </button>
             <button
               type="button"
-              className={cn(tbButton, 'hover:bg-bad hover:text-white')}
+              className={cn(tbButton, 'hover:bg-close hover:text-white')}
               title={running ? 'Свернуть в трей' : 'Закрыть'}
               onClick={() => api.shell('close')}
             >

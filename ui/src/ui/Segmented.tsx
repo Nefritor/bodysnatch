@@ -39,7 +39,7 @@ export function Segmented<T extends string>({
     >
       <span
         aria-hidden
-        className="lg-thumb absolute top-[3px] bottom-[3px] left-[3px] rounded-pill transition-transform duration-[380ms] [transition-timing-function:cubic-bezier(0.3,1.35,0.5,1)]"
+        className="lg-thumb absolute top-[3px] bottom-[3px] left-[3px] rounded-pill transition-transform duration-[260ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]"
         style={{ width: `calc((100% - 6px) / ${count})`, transform: `translateX(${index * 100}%)` }}
       />
       {options.map((o) => (
@@ -52,7 +52,9 @@ export function Segmented<T extends string>({
           className={cn(
             'relative z-10 rounded-pill whitespace-nowrap transition-colors duration-200',
             size === 'sm' ? 'px-2.5 py-0.5 text-[11px]' : 'px-3.5 py-1 text-xs',
-            o.value === value ? 'font-semibold text-ink' : 'text-ink-muted hover:text-ink',
+            // толщина шрифта у всех одинаковая: иначе при смене выбора ширина сегментов, а с ней и соседние элементы «дёргаются»
+            'font-medium',
+            o.value === value ? 'text-ink' : 'text-ink-muted hover:text-ink',
           )}
         >
           {o.label}

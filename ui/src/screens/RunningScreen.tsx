@@ -165,7 +165,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
         </Collapsible>
       </section>
 
-      <section ref={lastRef} className="lg -ml-[11px] w-[calc(100%+22px)] rounded-t-card px-4 pt-2 pb-4">
+      <section ref={lastRef} className="lg -ml-[11px] w-[calc(100%+22px)] rounded-t-card px-4 py-2">
         <button
           type="button"
           className={spoilerButton}

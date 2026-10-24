@@ -52,6 +52,7 @@
   --color-bad-soft: var(--c-bad-soft);
   --color-warn: var(--c-warn);
   --color-warn-soft: var(--c-warn-soft);
+  --color-close: var(--c-close);
 }
 
 /* ── Постоянные токены: размеры, радиусы, шрифты, тени ────────────────────── */
@@ -110,6 +111,7 @@
   --c-warn: #9a5b06;
   --c-warn-soft: rgb(154 91 6 / 13%);
   --c-scrim: rgb(24 28 36 / 28%);
+  --c-close: rgb(161, 55, 55);
 
   --c-accent: #2f6fed;
   --c-accent-deep: #2457c9;
@@ -164,11 +166,12 @@
   --c-surface-line: rgb(255 255 255 / 14%);
   --c-good: #86e6ad;
   --c-good-soft: rgb(127 224 166 / 16%);
-  --c-bad: #ff9ba1;
+  --c-bad: #e07f86;
   --c-bad-soft: rgb(255 155 161 / 16%);
   --c-warn: #f3c07b;
   --c-warn-soft: rgb(243 192 123 / 16%);
   --c-scrim: rgb(0 0 0 / 55%);
+  --c-close: rgb(146, 26, 26);
 
   --c-accent: #7aa2ff;
   --c-accent-deep: #5b86f0;
@@ -376,7 +379,6 @@
 
   .lg {
     background: var(--lg-fill);
-    border: 1px solid var(--lg-hair);
     box-shadow:
       var(--lg-shadow),
       inset 0 1px 0 var(--lg-edge),

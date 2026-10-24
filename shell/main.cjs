@@ -181,6 +181,10 @@ function createWindow() {
   win = new BrowserWindow({
     width: 600,
     height: 440,
+    // размер задаёт само приложение под содержимое экрана; пользователь его не меняет
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     minWidth: 600,
     minHeight: 200,
     show: false,
