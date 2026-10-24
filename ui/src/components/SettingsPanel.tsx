@@ -1,4 +1,4 @@
-/** Дополнительные настройки: live reload, вышестоящий прокси, что именно идёт через прокси. */
+/** Дополнительные настройки: автоперезагрузка страницы, вышестоящий прокси, что именно идёт через прокси. */
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import type { Snapshot } from '../types.js';
@@ -51,7 +51,11 @@ export const SettingsPanel = ({ snap, onChanged }: SettingsPanelProps) => {
           Перезагружать страницу при изменении файлов
           <span className="block text-xs text-ink-muted">CSS обновляется без перезагрузки</span>
         </span>
-        <Switch checked={snap.liveReload} onChange={(v) => void save({ liveReload: v })} label="Live reload" />
+        <Switch
+          checked={snap.liveReload}
+          onChange={(v) => void save({ liveReload: v })}
+          label="Автоперезагрузка страницы"
+        />
       </label>
 
       <label className="flex flex-col gap-1 text-sm text-ink">

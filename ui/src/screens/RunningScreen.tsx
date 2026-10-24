@@ -35,6 +35,20 @@ const tailAfterModule = (file: string, module: string) => {
   return path.slice(at + marker.length);
 };
 
+/** Тип записи журнала по-русски (исходное значение остаётся в подсказке и участвует в поиске). */
+const VIA_LABEL: Record<string, string> = {
+  mirror: 'подмена',
+  'mirror-min': 'подмена · .min',
+  'mirror-other': 'подмена · др. папка',
+  'mirror-other-min': 'подмена · .min, др. папка',
+  passthrough: 'с сервера',
+  'map-miss': 'нет файла',
+  error: 'ошибка',
+  websocket: 'WebSocket',
+  switch: 'переключатель',
+};
+const viaLabel = (via: string) => VIA_LABEL[via] ?? via;
+
 /** Строка таблицы: фиксированные первые три колонки, последняя — по остатку. */
 const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-3';
 
@@ -67,7 +81,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     const q = query.trim().toLowerCase();
     const filtered = q
       ? mirrored.filter((e) =>
-          `${e.t} ${e.status} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
+          `${e.t} ${e.status} ${e.via} ${viaLabel(e.via)} ${e.module || ''} ${e.file || ''} ${tailAfterModule(e.file || '', e.module || '')} ${e.url}`
             .toLowerCase()
             .includes(q),
         )
@@ -240,7 +254,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                         </Badge>
                       </span>
                       <span className="truncate">
-                        <Badge title={e.module || e.via}>{highlight(e.module || e.via, query)}</Badge>
+                        <Badge title={e.module || e.via}>{highlight(e.module || viaLabel(e.via), query)}</Badge>
                       </span>
                       <span className="truncate font-mono text-ink" title={e.file || e.url}>
                         {highlight(e.file ? tailAfterModule(e.file, e.module || '') : e.note || e.url, query)}

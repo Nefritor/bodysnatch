@@ -148,7 +148,7 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
 
         <div className="flex items-center justify-between gap-4 px-1">
           <div className="text-xs text-ink-muted" style={anim('bs-fade-in', T.footer, 700)}>
-            v {version} · author: M. Khamitov
+            версия {version} · автор: М. Хамитов
           </div>
           <div style={anim('bs-fade-in', T.button, 700)}>
             <Button
