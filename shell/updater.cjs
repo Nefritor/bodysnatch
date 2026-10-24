@@ -52,7 +52,7 @@ function pickAsset(assets) {
 }
 
 function createUpdater({ currentVersion, log, onState, onInstall }) {
-  let state = { status: 'idle', version: '', progress: 0, error: '' };
+  let state = { status: 'idle', version: '', progress: 0, received: 0, total: 0, speed: 0, error: '' };
   let asset = null; // { name, url, size, sha256 }
   let etag = '';
   let lastCheck = 0;
@@ -129,7 +129,16 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
         sha256: /^sha256:([0-9a-f]{64})$/i.exec(String(found.digest || ''))?.[1]?.toLowerCase() || '',
       };
       log(`обновления: доступна версия ${version}`);
-      set({ status: cachedFileOk() ? 'ready' : 'available', version, progress: cachedFileOk() ? 1 : 0, error: '' });
+      const have = cachedFileOk();
+      set({
+        status: have ? 'ready' : 'available',
+        version,
+        progress: have ? 1 : 0,
+        received: have ? asset.size : 0,
+        total: asset.size,
+        speed: 0,
+        error: '',
+      });
     } catch (e) {
       log('обновления: ' + (e && e.message ? e.message : e));
     } finally {
@@ -141,7 +150,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
     if (!asset || (state.status !== 'available' && state.status !== 'error')) return;
     const file = filePath();
     const part = file + '.part';
-    set({ status: 'downloading', progress: 0, error: '' });
+    set({ status: 'downloading', progress: 0, received: 0, speed: 0, error: '' });
     try {
       fs.mkdirSync(dir(), { recursive: true });
       const res = await net.fetch(asset.url, { headers: { 'user-agent': `BodySnatch/${currentVersion}` } });
@@ -150,6 +159,9 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
       const hash = crypto.createHash('sha256');
       let received = 0;
       let lastEmit = 0;
+      // скорость: сглаженная по скользящему окну примерно в секунду
+      let mark = { at: Date.now(), bytes: 0 };
+      let speed = 0;
       const source = Readable.fromWeb(res.body);
       source.on('data', (chunk) => {
         hash.update(chunk);
@@ -157,18 +169,23 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
         const now = Date.now();
         if (total && now - lastEmit > 90) {
           lastEmit = now;
-          set({ progress: Math.min(0.99, received / total) });
+          if (now - mark.at >= 700) {
+            const instant = ((received - mark.bytes) / (now - mark.at)) * 1000;
+            speed = speed ? speed * 0.6 + instant * 0.4 : instant;
+            mark = { at: now, bytes: received };
+          }
+          set({ progress: Math.min(0.99, received / total), received, total, speed });
         }
       });
       await pipeline(source, fs.createWriteStream(part));
       if (asset.sha256 && hash.digest('hex') !== asset.sha256) throw new Error('контрольная сумма не совпала');
       fs.renameSync(part, file);
-      set({ status: 'ready', progress: 1 });
+      set({ status: 'ready', progress: 1, received: received || asset.size, total: total || asset.size });
       log(`обновления: ${asset.name} скачан`);
     } catch (e) {
       fs.rmSync(part, { force: true });
       log('обновления: загрузка не удалась — ' + (e && e.message ? e.message : e));
-      set({ status: 'error', progress: 0, error: String((e && e.message) || e) });
+      set({ status: 'error', progress: 0, received: 0, speed: 0, error: String((e && e.message) || e) });
     }
   }
 

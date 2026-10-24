@@ -138,7 +138,7 @@ export function App() {
 
   const frame = (children: React.ReactNode) => (
     <div className="flex h-screen flex-col overflow-hidden">
-      {native && <TitleBar running={Boolean(state?.enabled)} />}
+      {native && <TitleBar running={Boolean(state?.enabled)} version={state?.version} />}
       <main className={cn('min-h-0 flex-1 pl-2 pr-2', step !== Step.Work && 'pb-2')}>
         <div className={cn('h-full', shell)}>{children}</div>
       </main>

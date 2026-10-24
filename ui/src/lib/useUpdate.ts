@@ -8,6 +8,11 @@ export type UpdateState = {
   version: string;
   /** доля скачанного, 0…1 */
   progress: number;
+  /** скачано и всего, байт */
+  received: number;
+  total: number;
+  /** скорость загрузки, байт/с (сглаженная) */
+  speed: number;
   error: string;
 };
 

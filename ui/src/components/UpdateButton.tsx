@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../ui/cn.js';
 import { useUpdate } from '../lib/useUpdate.js';
+import { megabytes } from '../lib/format.js';
 
 const icon = { width: 13, height: 13, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7 };
 
@@ -71,6 +72,13 @@ export const UpdateButton = () => {
   if (!state || status === 'idle') return null;
 
   const ready = status === 'ready';
+  const mb = (n: number) => megabytes(n);
+  const totalText = mb(state.total);
+  // цифры одной ширины и добивка до длины итога: подпись не «пляшет» по мере роста чисел
+  const pad = (text: string, size: number) => text.padStart(size, ' ');
+  const receivedText = pad(mb(state.received), totalText.length);
+  const speedText = pad(mb(state.speed), 4);
+
   const title =
     status === 'available'
       ? `Доступна версия ${state.version}`
@@ -85,6 +93,14 @@ export const UpdateButton = () => {
     else if (ready && !check) install();
   };
 
+  /** «Скачано / всего МБ», справа скорость — она показывается, только если в шапке хватает места. */
+  const progressLabel = (received: string, speed: string) => (
+    <span className="tabular-nums">
+      {received} / {totalText} МБ
+      <span className="hidden @[580px]:inline"> · {speed} МБ/с</span>
+    </span>
+  );
+
   return (
     <button
       type="button"
@@ -98,16 +114,25 @@ export const UpdateButton = () => {
         status === 'downloading' && 'cursor-progress',
       )}
     >
-      <Layer show={status === 'available' || status === 'downloading'}>
+      {/* невидимая подпись самой большой длины: она задаёт ширину кнопки на все шаги */}
+      <span aria-hidden className="invisible col-start-1 row-start-1 flex items-center gap-1.5 whitespace-nowrap">
+        <IconInstall />
+        {progressLabel(totalText, '99,9')}
+      </span>
+      <Layer show={status === 'available'}>
         <IconRefresh />
-        Обновить
+        Обновить до {state.version}
+      </Layer>
+      <Layer show={status === 'downloading'}>
+        <IconInstall />
+        {progressLabel(receivedText, speedText)}
       </Layer>
       <Layer show={check}>
         <IconCheck />
       </Layer>
       <Layer show={ready && !check}>
         <IconInstall />
-        Установить
+        Установить {state.version}
       </Layer>
       <Layer show={status === 'error'}>
         <IconRefresh />

@@ -11,22 +11,25 @@ import { UpdateButton } from './UpdateButton.js';
 export type TitleBarProps = {
   /** подмена работает — влияет только на подпись кнопки закрытия */
   running: boolean;
+  /** текущая версия приложения */
+  version?: string;
 };
 
 const tbButton =
   'grid size-8 w-12 place-items-center text-ink-soft transition-colors hover:bg-[var(--c-row-hover)] hover:text-ink';
 
-export const TitleBar = ({ running }: TitleBarProps) => {
+export const TitleBar = ({ running, version }: TitleBarProps) => {
   const mac = api.platform() === 'darwin';
   return (
     <div
       className={cn(
-        'flex h-10 shrink-0 items-center gap-2 select-none [-webkit-app-region:drag]',
+        '@container flex h-10 shrink-0 items-center gap-2 select-none [-webkit-app-region:drag]',
         mac ? 'pl-20' : 'pl-3',
       )}
     >
       <img className="size-4" src="./logo.png" alt="" aria-hidden />
       <span className="text-xs font-semibold text-ink-soft">BodySnatch</span>
+      {version ? <span className="text-[11px] text-ink-muted">v{version}</span> : null}
       <div className="ml-auto flex h-full items-center [-webkit-app-region:no-drag]">
         <UpdateButton />
         <ThemeMenu />
