@@ -1,8 +1,17 @@
-/** Кнопка темы в шапке: авто → светлая → тёмная. */
+/**
+ * Кнопка темы в шапке: авто → светлая → тёмная.
+ * Призрачный стиль: виден только текст, при наведении проявляется стеклянная пилюля.
+ * Подписи лежат в одной ячейке сетки, поэтому ширина кнопки не меняется при смене темы.
+ */
 import { useEffect, useState } from 'react';
 import { applyTheme, loadTheme, nextTheme, type ThemeMode } from '../theme.js';
+import { cn } from '../ui/cn.js';
 
-const LABEL: Record<ThemeMode, string> = { auto: 'Авто', light: 'Светлая', dark: 'Тёмная' };
+const MODES: { mode: ThemeMode; label: string }[] = [
+  { mode: 'auto', label: 'Авто' },
+  { mode: 'light', label: 'Светлая' },
+  { mode: 'dark', label: 'Тёмная' },
+];
 
 const icon = (mode: ThemeMode) => {
   const common = {
@@ -46,16 +55,35 @@ export const ThemeMenu = () => {
     return () => query.removeEventListener('change', onChange);
   }, [mode]);
 
+  const current = MODES.find((m) => m.mode === mode)?.label ?? '';
+
   return (
     <button
       type="button"
       aria-label="Тема оформления"
-      title={`Тема: ${LABEL[mode]}`}
+      title={`Тема: ${current}`}
       onClick={() => setMode(nextTheme(mode))}
-      className="mr-2 flex h-8 items-center gap-1.5 rounded-b-sm px-2 text-xs text-ink-soft transition-colors hover:bg-hover hover:text-ink"
+      className={cn(
+        'mr-1 inline-grid h-7 items-center rounded-pill border border-transparent px-2.5 text-xs font-medium',
+        'text-ink-soft transition-[background-color,border-color,box-shadow,color] duration-200 hover:text-ink',
+        // при наведении проявляется стеклянная пилюля
+        'hover:border-[var(--lg-hair)] hover:bg-[var(--lg-fill-hover)]',
+        'hover:shadow-[inset_0_1px_0_var(--lg-edge),0_4px_12px_rgb(20_26_40/8%)]',
+      )}
     >
-      <span className="font-medium">{LABEL[mode]}</span>
-      {icon(mode)}
+      {MODES.map((m) => (
+        <span
+          key={m.mode}
+          aria-hidden={m.mode !== mode}
+          className={cn(
+            'col-start-1 row-start-1 flex items-center justify-center gap-1.5 whitespace-nowrap',
+            m.mode === mode ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
+          {m.label}
+          {icon(m.mode)}
+        </span>
+      ))}
     </button>
   );
 };

@@ -27,14 +27,14 @@ export const TitleBar = ({ running }: TitleBarProps) => {
     >
       <img className="size-4" src="./logo.png" alt="" aria-hidden />
       <span className="text-xs font-semibold text-ink-soft">BodySnatch</span>
-      <div className="ml-auto flex items-center self-start [-webkit-app-region:no-drag]">
+      <div className="ml-auto flex h-full items-center [-webkit-app-region:no-drag]">
         <UpdateButton />
         <ThemeMenu />
         {mac ? null : (
           <>
             <button
               type="button"
-              className={cn(tbButton, 'rounded-bl-sm')}
+              className={cn(tbButton, 'self-start rounded-bl-sm')}
               title="Свернуть"
               onClick={() => api.shell('minimize')}
             >
@@ -44,7 +44,7 @@ export const TitleBar = ({ running }: TitleBarProps) => {
             </button>
             <button
               type="button"
-              className={cn(tbButton, 'hover:bg-close hover:text-white')}
+              className={cn(tbButton, 'self-start hover:bg-close hover:text-white')}
               title={running ? 'Свернуть в трей' : 'Закрыть'}
               onClick={() => api.shell('close')}
             >

@@ -92,7 +92,7 @@ export const UpdateButton = () => {
       onClick={onClick}
       disabled={status === 'downloading' || check}
       className={cn(
-        'lg-pill relative mr-2 inline-grid h-7 items-center overflow-hidden rounded-pill px-3 text-xs font-semibold',
+        'lg-pill relative mr-1 inline-grid h-7 items-center overflow-hidden rounded-pill px-3 text-xs font-semibold',
         'transition-colors duration-500',
         ready ? 'border-good/45 bg-good-soft text-good' : status === 'error' ? 'text-bad' : 'text-brand',
         status === 'downloading' && 'cursor-progress',
