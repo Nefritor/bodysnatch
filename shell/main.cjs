@@ -22,6 +22,8 @@ const argValue = (name) => {
 };
 /** --ui <url>: интерфейс с dev-сервера Vite (горячая перезагрузка). */
 const UI_OVERRIDE = argValue('--ui');
+/** --splash: показать приветственный экран (npm run splash). */
+const SHOW_SPLASH = process.argv.includes('--splash');
 
 // одна и та же папка данных для приложения и для `npm start`
 app.setName('BodySnatch');
@@ -91,7 +93,7 @@ async function startEngine() {
       defaultConfigPath: path.join(ROOT, 'config', 'rules.default.json'),
       stateDir: DATA,
       certsDir: path.join(DATA, 'certs'),
-      version: app.getVersion(),
+      version: require('../package.json').version,
       port: Number(process.env.BODYSNATCH_PORT) || 0,
     },
     UI_OVERRIDE ? { port: 8181, origin: new URL(UI_OVERRIDE).origin } : null,
@@ -204,6 +206,7 @@ function createWindow() {
   win.removeMenu();
 
   let uiUrl = UI_OVERRIDE || 'app://bodysnatch/index.html';
+  if (SHOW_SPLASH) uiUrl += (uiUrl.includes('?') ? '&' : '?') + 'splash=1';
   if (process.env.BODYSNATCH_SCREEN)
     uiUrl += (uiUrl.includes('?') ? '&' : '?') + 'screen=' + encodeURIComponent(process.env.BODYSNATCH_SCREEN);
   void win.loadURL(uiUrl);

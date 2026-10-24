@@ -12,9 +12,18 @@ export type SegmentedProps<T extends string> = {
   onChange: (next: T) => void;
   ariaLabel: string;
   className?: string;
+  /** sm — компактный вариант для панелей инструментов */
+  size?: 'sm' | 'md';
 };
 
-export function Segmented<T extends string>({ value, options, onChange, ariaLabel, className }: SegmentedProps<T>) {
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  className,
+  size = 'md',
+}: SegmentedProps<T>) {
   const count = options.length;
   const index = Math.max(
     0,
@@ -41,7 +50,8 @@ export function Segmented<T extends string>({ value, options, onChange, ariaLabe
           aria-checked={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'relative z-10 rounded-pill px-3.5 py-1 text-xs whitespace-nowrap transition-colors duration-200',
+            'relative z-10 rounded-pill whitespace-nowrap transition-colors duration-200',
+            size === 'sm' ? 'px-2.5 py-0.5 text-[11px]' : 'px-3.5 py-1 text-xs',
             o.value === value ? 'font-semibold text-ink' : 'text-ink-muted hover:text-ink',
           )}
         >

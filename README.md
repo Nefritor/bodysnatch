@@ -74,6 +74,7 @@ test/             node --test
 npm install
 npm run dev        # Vite 5179 + Electron, DevTools открываются сами
 npm start          # без Electron: прокси + API на 8181, интерфейс в браузере
+npm run splash     # открыть приветственный экран (показывается при первом запуске)
 npm test           # юнит- и интеграционные тесты (системные настройки не трогаются)
 npm run lint       # tsc + prettier + stylelint
 ```

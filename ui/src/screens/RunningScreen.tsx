@@ -38,11 +38,8 @@ const tailAfterModule = (file: string, module: string) => {
 /** Строка таблицы: фиксированные первые три колонки, последняя — по остатку. */
 const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-3';
 
-/** Высота раскрытых блоков: окно подгоняется под них (см. change). */
-const RULES_H = 590;
-const QUERIES_H = 260;
 /** Длительность сворачивания блока (см. Collapsible): окно подтягивается после неё. */
-const COLLAPSE_MS = 330;
+const COLLAPSE_MS = 340;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
@@ -51,8 +48,6 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
   const [query, setQuery] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
   const [queriesOpen, setQueriesOpen] = useState(false);
-  // тяжёлый блок правил монтируется при первом раскрытии и дальше остаётся в дереве
-  const [rulesMounted, setRulesMounted] = useState(false);
   // свитч отзывается мгновенно, не дожидаясь опроса состояния
   const [pending, setPending] = useState<boolean | null>(null);
   useEffect(() => {
@@ -80,34 +75,50 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     return filtered.slice(0, 100);
   }, [log, query, filter]);
 
-  const work = STEPS.find(({ key }) => key === Step.Work)?.size ?? { w: 600, h: 222 };
-  const resizeTo = (rules: boolean, queries: boolean) =>
-    api.shell('resize', { w: work.w, h: work.h + (rules ? RULES_H : 0) + (queries ? QUERIES_H : 0) });
+  const lastRef = useRef<HTMLElement | null>(null);
+  const rulesBody = useRef<HTMLDivElement | null>(null);
+  const queriesBody = useRef<HTMLDivElement | null>(null);
+  const { w: workWidth } = STEPS.find(({ key }) => key === Step.Work)?.size ?? { w: 600 };
 
-  // Раскрытие: окно сразу получает новый размер, а блок плавно «выезжает» в уже готовое место
-  // средствами CSS. Сворачивание наоборот: блок сворачивается, и лишь потом окно подтягивается.
+  /** Нижняя граница последнего блока: ровно такой высоты окно нужно, когда анимации завершены. */
+  const bottom = () => Math.ceil(lastRef.current?.getBoundingClientRect().bottom ?? 0);
+  const resizeTo = (h: number) => h > 0 && api.shell('resize', { w: workWidth, h });
+
+  /** Какой высоты будет окно, если блоки окажутся в таком состоянии (по естественной высоте их содержимого). */
+  const predict = (rules: boolean, queries: boolean) => {
+    const delta = (open: boolean, ref: { current: HTMLElement | null }) =>
+      ref.current ? (open ? ref.current.scrollHeight : 0) - ref.current.offsetHeight : 0;
+    return Math.ceil(bottom() + delta(rules, rulesBody) + delta(queries, queriesBody));
+  };
+
+  // Содержимое раскрывается средствами CSS, окно только заранее освобождает или подтягивает место:
+  // при раскрытии оно растёт первым, при сворачивании — после того, как блок схлопнулся.
   // Так каждый кадр анимации рисует страница, а не операционная система.
   const timer = useRef<number | null>(null);
   const change = (rules: boolean, queries: boolean) => {
     if (timer.current) window.clearTimeout(timer.current);
     const grow = (rules && !rulesOpen) || (queries && !queriesOpen);
+    const target = predict(rules, queries);
     if (grow) {
-      resizeTo(rules || rulesOpen, queries || queriesOpen);
-      // следующий кадр: окно уже большое, блок начинает раскрываться
+      resizeTo(target);
       window.requestAnimationFrame(() => {
         setRulesOpen(rules);
         setQueriesOpen(queries);
-        if (rules) setRulesMounted(true);
       });
     } else {
       setRulesOpen(rules);
       setQueriesOpen(queries);
-      timer.current = window.setTimeout(() => resizeTo(rules, queries), COLLAPSE_MS);
+      resizeTo(target > 0 ? target : bottom());
     }
+    // когда всё улеглось, подгоняем окно по факту (на случай расхождения с предсказанием)
+    timer.current = window.setTimeout(() => resizeTo(bottom()), COLLAPSE_MS + 60);
   };
 
-  // начальный размер рабочего экрана
-  useEffect(() => resizeTo(false, false), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // начальный размер рабочего экрана: по факту отрисовки
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => resizeTo(bottom()));
+    return () => window.cancelAnimationFrame(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const caret = (open: boolean) => (
     <IconChevron
@@ -151,16 +162,17 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
           {caret(rulesOpen)}
           Правила подмены
         </button>
-        <Collapsible open={rulesOpen}>
-          {rulesMounted ? (
-            <div className="px-1 pt-2" style={{ height: RULES_H }}>
-              <div className="h-full">{rulesSlot}</div>
-            </div>
-          ) : null}
+        <Collapsible open={rulesOpen} innerRef={rulesBody}>
+          <div
+            className="overflow-y-auto px-1 pt-2"
+            style={{ maxHeight: Math.max(320, window.screen.availHeight - 330) }}
+          >
+            {rulesSlot}
+          </div>
         </Collapsible>
       </section>
 
-      <section className="lg -ml-[11px] w-[calc(100%+22px)] rounded-t-card px-4 pt-2 pb-4">
+      <section ref={lastRef} className="lg -ml-[11px] w-[calc(100%+22px)] rounded-t-card px-4 pt-2 pb-4">
         <button
           type="button"
           className={spoilerButton}
@@ -172,8 +184,8 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
           <span className="ml-1 text-xs font-normal text-ink-muted">{rows.length}</span>
         </button>
 
-        <Collapsible open={queriesOpen}>
-          <div className="flex flex-col gap-2 pt-2" style={{ height: QUERIES_H - 56 }}>
+        <Collapsible open={queriesOpen} innerRef={queriesBody}>
+          <div className="flex flex-col gap-2 pt-2">
             <div className="flex items-center gap-2">
               <Input
                 type="search"
@@ -183,6 +195,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                 className="min-w-0 flex-1"
               />
               <Segmented
+                size="sm"
                 ariaLabel="Фильтр журнала"
                 value={filter}
                 onChange={setFilter}
@@ -193,19 +206,19 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                 ]}
               />
               <Button
-                size="sm"
+                size="round"
                 variant="secondary"
-                className="shrink-0"
+                className="size-7 shrink-0"
                 onClick={onClearLog}
                 disabled={log.length === 0}
                 title="Очистить журнал"
+                aria-label="Очистить журнал"
               >
                 <IconClose size={11} />
-                Очистить
               </Button>
             </div>
 
-            <div className="lg-soft min-h-0 flex-1 overflow-auto rounded-lg">
+            <div className="lg-soft h-[200px] overflow-auto rounded-lg">
               {rows.length === 0 ? (
                 <div className="grid h-full place-items-center text-xs text-ink-muted">Пусто</div>
               ) : (

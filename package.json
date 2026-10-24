@@ -19,7 +19,9 @@
     "icons": "electron scripts/make-icons.cjs",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "splash": "electron shell/main.cjs --splash",
+    "splash:dev": "electron shell/main.cjs --splash --dev"
   },
   "dependencies": {
     "node-forge": "^1.3.1"

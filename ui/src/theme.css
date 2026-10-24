@@ -116,6 +116,8 @@
   --c-accent-soft: rgb(47 111 237 / 12%);
   --c-accent-ink: #fff;
 
+  --bs-blob-blue: rgb(66 133 244 / 22%);
+  --bs-blob-green: rgb(52 168 83 / 16%);
   --glass-blur: 28px;
   --glass-saturate: 165%;
 
@@ -176,6 +178,8 @@
   --shadow-matte: 0 14px 32px rgb(0 0 0 / 45%);
   --shadow-glass: 0 14px 32px rgb(0 0 0 / 45%);
 
+  --bs-blob-blue: rgb(66 133 244 / 26%);
+  --bs-blob-green: rgb(52 168 83 / 18%);
   --lg-fill: rgb(255 255 255 / 5.5%);
   --lg-fill-soft: rgb(255 255 255 / 3.5%);
   --lg-fill-hover: rgb(255 255 255 / 13%);
@@ -226,6 +230,8 @@
      и рисуется прямоугольником мимо скругления — углы получаются квадратными. */
   #root {
     background:
+      radial-gradient(520px 380px at 92% 8%, var(--bs-blob-blue), transparent 70%),
+      radial-gradient(480px 360px at 4% 96%, var(--bs-blob-green), transparent 70%),
       radial-gradient(900px 560px at 20% -10%, var(--c-bg1), transparent 62%),
       linear-gradient(168deg, var(--c-bg1), var(--c-bg2));
   }
@@ -281,6 +287,8 @@
 
   [data-shell="electron"] #root {
     background:
+      radial-gradient(520px 380px at 92% 8%, var(--bs-blob-blue), transparent 70%),
+      radial-gradient(480px 360px at 4% 96%, var(--bs-blob-green), transparent 70%),
       radial-gradient(
         900px 560px at 20% -10%,
         color-mix(in srgb, var(--c-bg1) var(--glass-alpha-top), transparent),
@@ -368,8 +376,8 @@
 
   .lg {
     background: var(--lg-fill);
+    border: 1px solid var(--lg-hair);
     box-shadow:
-      0 0 0 1px var(--lg-hair),
       var(--lg-shadow),
       inset 0 1px 0 var(--lg-edge),
       inset 0 -1px 0 var(--lg-edge-2),
@@ -380,16 +388,16 @@
 
   .lg-soft {
     background: var(--lg-fill-soft);
+    border: 1px solid var(--lg-hair);
     box-shadow:
-      0 0 0 1px var(--lg-hair),
       inset 0 1px 0 var(--lg-edge-2),
       inset 0 0 18px var(--lg-glow);
   }
 
   .lg-pill {
     background: var(--lg-fill);
+    border: 1px solid var(--lg-hair);
     box-shadow:
-      0 0 0 1px var(--lg-hair),
       0 4px 12px rgb(20 26 40 / 8%),
       inset 0 1px 0 var(--lg-edge),
       inset 0 -1px 0 var(--lg-edge-2);
@@ -408,7 +416,6 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     box-shadow:
-      0 0 0 1px var(--lg-hair),
       inset 0 1px 0 var(--lg-edge-2),
       inset 0 0 18px var(--lg-glow);
   }
@@ -420,8 +427,8 @@
   /* бегунок переключателя: ярче и выше остальных поверхностей */
   .lg-thumb {
     background: var(--lg-thumb);
+    border: 1px solid var(--lg-hair);
     box-shadow:
-      0 0 0 1px var(--lg-hair),
       0 6px 16px rgb(20 26 40 / 16%),
       inset 0 1px 0 rgb(255 255 255 / 90%),
       inset 0 -1px 0 var(--lg-edge-2),
@@ -430,7 +437,6 @@
 
   [data-mode="dark"] .lg-thumb {
     box-shadow:
-      0 0 0 1px var(--lg-hair),
       0 6px 16px rgb(0 0 0 / 40%),
       inset 0 1px 0 rgb(255 255 255 / 45%),
       inset 0 -1px 0 var(--lg-edge-2),
@@ -451,51 +457,138 @@
   }
 }
 
-@keyframes bs-brace-left {
+@keyframes bs-tile {
   from {
     opacity: 0;
-    transform: translateX(-140px);
+    transform: scale(0.82);
+    filter: blur(12px);
   }
 
   to {
     opacity: 1;
     transform: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes bs-brace-left {
+  from {
+    opacity: 0;
+    transform: translateX(-620px) scale(0.86);
+    filter: blur(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
   }
 }
 
 @keyframes bs-brace-right {
   from {
     opacity: 0;
-    transform: translateX(140px);
+    transform: translateX(620px) scale(0.86);
+    filter: blur(14px);
   }
 
   to {
     opacity: 1;
     transform: none;
+    filter: blur(0);
   }
 }
 
 @keyframes bs-arrow-blue {
   from {
     opacity: 0;
-    transform: translate(-300px, -190px);
+    transform: translate(-1500px, -1150px) scale(0.7);
+    filter: blur(12px);
+  }
+
+  55% {
+    opacity: 1;
+    filter: blur(0);
   }
 
   to {
     opacity: 1;
     transform: none;
+    filter: blur(0);
   }
 }
 
 @keyframes bs-arrow-green {
   from {
     opacity: 0;
-    transform: translate(300px, 190px);
+    transform: translate(1500px, 1150px) scale(0.7);
+    filter: blur(12px);
+  }
+
+  55% {
+    opacity: 1;
+    filter: blur(0);
   }
 
   to {
     opacity: 1;
     transform: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes bs-sheen {
+  from {
+    transform: skewX(-18deg) translateX(0);
+  }
+
+  to {
+    transform: skewX(-18deg) translateX(1500px);
+  }
+}
+
+@keyframes bs-glow {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+
+  45% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+
+  100% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes bs-title {
+  from {
+    opacity: 0;
+    letter-spacing: 0.32em;
+    filter: blur(10px);
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    letter-spacing: 0;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+@keyframes bs-line {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleX(1);
   }
 }
 
