@@ -5,7 +5,7 @@
  * список возможностей и кнопка «Начать».
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { LOGO, LOGO_VIEWBOX } from '../lib/logo.js';
 import { Button } from '../ui/Button.js';
 
@@ -51,6 +51,45 @@ const Check = () => (
   </svg>
 );
 
+/**
+ * Слой логотипа: свой элемент на каждую деталь. Двигать и масштабировать отдельный слой браузер
+ * умеет на видеокарте и с долями пикселя; анимация контуров внутри одного SVG перерисовывала бы
+ * всю плитку на каждом кадре и на слабых машинах шла рывками.
+ */
+const LogoLayer = ({
+  d,
+  fill,
+  outer,
+  inner,
+}: {
+  d: string;
+  fill: string;
+  outer: CSSProperties;
+  inner?: CSSProperties;
+}) => (
+  <div className="absolute inset-0" style={outer}>
+    <svg viewBox={LOGO_VIEWBOX} className="size-full" aria-hidden style={inner}>
+      <path d={d} fill={fill} />
+    </svg>
+  </div>
+);
+
+const LAYER = { willChange: 'transform, opacity' } as const;
+const brace = (delay: number): CSSProperties => ({
+  ...LAYER,
+  ...anim('bs-grow-y', delay, 800),
+  transformOrigin: 'center',
+});
+/** Стрелка едва заметно «дышит» после появления. */
+const flow = (delay: number, name: string): CSSProperties => ({
+  ...LAYER,
+  animation: `${name} 2800ms ease-in-out ${delay + 900}ms infinite alternate`,
+});
+/** Стрелка «печатается» в направлении движения. */
+const wipe = (delay: number, name: string): CSSProperties => ({
+  animation: `${name} 800ms cubic-bezier(0.65, 0, 0.35, 1) ${delay}ms both`,
+});
+
 /** Строка, которая выезжает из-под маски. */
 const Line = ({ delay, children, className }: { delay: number; children: ReactNode; className?: string }) => (
   <div className="overflow-hidden">
@@ -82,16 +121,6 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
     return () => window.removeEventListener('keydown', onKey);
   }, [start]);
 
-  /** Стрелка: «печатается» (wipe), затем бесконечно едва заметно смещается (flow). */
-  const arrow = (delay: number, wipe: string, flow: string) => ({
-    animation: `${wipe} 800ms cubic-bezier(0.65, 0, 0.35, 1) ${delay}ms both, ${flow} 2800ms ease-in-out ${delay + 900}ms infinite alternate`,
-  });
-  const brace = (delay: number) => ({
-    ...anim('bs-grow-y', delay, 800),
-    transformBox: 'fill-box' as const,
-    transformOrigin: 'center',
-  });
-
   return (
     <div
       className="grid h-full place-items-center"
@@ -112,16 +141,22 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
               ...anim('bs-pop', T.tile, 900),
             }}
           >
-            <svg viewBox={LOGO_VIEWBOX} className="size-full" role="img" aria-label="BodySnatch">
-              <path d={LOGO.braceLeft} fill={LOGO.colors.brace} style={brace(T.braces)} />
-              <path d={LOGO.braceRight} fill={LOGO.colors.brace} style={brace(T.braces + 90)} />
-              <path d={LOGO.blueArrow} fill={LOGO.colors.blue} style={arrow(T.arrows, 'bs-wipe-r', 'bs-flow-r')} />
-              <path
+            <div className="absolute inset-0" role="img" aria-label="BodySnatch">
+              <LogoLayer d={LOGO.braceLeft} fill={LOGO.colors.brace} outer={brace(T.braces)} />
+              <LogoLayer d={LOGO.braceRight} fill={LOGO.colors.brace} outer={brace(T.braces + 90)} />
+              <LogoLayer
+                d={LOGO.blueArrow}
+                fill={LOGO.colors.blue}
+                outer={flow(T.arrows, 'bs-flow-r')}
+                inner={wipe(T.arrows, 'bs-wipe-r')}
+              />
+              <LogoLayer
                 d={LOGO.greenArrow}
                 fill={LOGO.colors.green}
-                style={arrow(T.arrows + 200, 'bs-wipe-l', 'bs-flow-l')}
+                outer={flow(T.arrows + 200, 'bs-flow-l')}
+                inner={wipe(T.arrows + 200, 'bs-wipe-l')}
               />
-            </svg>
+            </div>
           </div>
 
           <div className="min-w-0 flex-1">
@@ -151,24 +186,28 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
             версия {version} · автор: М. Хамитов
           </div>
           <div style={anim('bs-fade-in', T.button, 700)}>
-            <Button
-              variant="primary"
-              onClick={start}
-              autoFocus
-              className="px-6"
-              style={{ animation: `bs-btn-glow 2.4s ease-in-out ${T.button + 900}ms infinite` }}
-            >
-              Начать
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-                <path
-                  d="M2.5 7h9M8 3.2L11.8 7 8 10.8"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </Button>
+            <div className="relative">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-btn bg-brand"
+                style={{
+                  animation: `bs-btn-glow 2.4s ease-in-out ${T.button + 900}ms infinite`,
+                  willChange: 'transform, opacity',
+                }}
+              />
+              <Button variant="primary" onClick={start} autoFocus className="relative px-6">
+                Начать
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                  <path
+                    d="M2.5 7h9M8 3.2L11.8 7 8 10.8"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
