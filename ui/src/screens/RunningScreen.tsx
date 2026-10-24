@@ -39,8 +39,6 @@ const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 p
 /** Высота раскрытых блоков: окно подгоняется под них (см. change). */
 const RULES_H = 590;
 const QUERIES_H = 260;
-/** Пауза между командой окну «расти» и перерисовкой содержимого: иначе кадр рисуется в тесном окне. */
-const GROW_DELAY_MS = 90;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
@@ -80,21 +78,12 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
   const resizeTo = (rules: boolean, queries: boolean) =>
     api.shell('resize', { w: work.w, h: work.h + (rules ? RULES_H : 0) + (queries ? QUERIES_H : 0) });
 
-  // Раскрытие без мигания: сначала окно растёт, и только потом рисуется содержимое;
-  // при сворачивании — наоборот. Так блок не рисуется в окне, которое ему ещё мало.
+  // Содержимое меняется сразу, окно подстраивается плавно (см. applyResize в оболочке):
+  // при раскрытии блок «выезжает» вместе с окном, при сворачивании окно подтягивается к блоку.
   const change = (rules: boolean, queries: boolean) => {
-    const grow = (rules && !rulesOpen) || (queries && !queriesOpen);
-    const apply = () => {
-      setRulesOpen(rules);
-      setQueriesOpen(queries);
-    };
-    if (grow && api.hasNativeShell()) {
-      resizeTo(rules, queries);
-      window.setTimeout(apply, GROW_DELAY_MS);
-    } else {
-      apply();
-      resizeTo(rules, queries);
-    }
+    setRulesOpen(rules);
+    setQueriesOpen(queries);
+    resizeTo(rules, queries);
   };
 
   // начальный размер рабочего экрана
@@ -155,7 +144,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
         className={cn(
           'border border-b-0 border-glass-line bg-nested shadow-glass',
           'backdrop-blur-(--glass-blur) backdrop-saturate-(--glass-saturate)',
-          'mt-auto -ml-[11px] w-[calc(100%+22px)] px-4 pt-2 pb-4',
+          '-ml-[11px] w-[calc(100%+22px)] px-4 pt-2 pb-4',
         )}
       >
         <button
