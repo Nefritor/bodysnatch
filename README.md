@@ -203,6 +203,8 @@ npm run splash     # открыть приветственный экран (п�
 npm test           # юнит- и интеграционные тесты (системные настройки не трогаются)
 npm run lint       # tsc + prettier + stylelint
 npm run icons      # перегенерировать build/icon.png и shell/*.png из shell/icon.ico
+# отладка macOS без Mac: Actions → mac-smoke → Run workflow (собирает dmg на macOS-раннере,
+# проверяет подпись, запускает приложение, возвращает логи и скриншот)
 ```
 
 `npm start` принимает `--config`, `--certs`, `--state`, `--port`, `--api-port`. Тесты используют
@@ -228,9 +230,11 @@ npm run dist:mac   # release/BodySnatch-<версия>-mac-{x64,arm64}.dmg — �
 npm version 0.2.0 --no-git-tag-version && git commit -am "0.2.0" && git tag v0.2.0 && git push --follow-tags
 ```
 
-**Подпись.** Сборки не подписаны. Windows SmartScreen покажет предупреждение («Подробнее →
-Выполнить в любом случае»). На macOS первый запуск: правой кнопкой → «Открыть», либо
-`xattr -dr com.apple.quarantine /Applications/BodySnatch.app`. Подпись и нотаризация требуют
+**Подпись.** Сборки не подписаны сертификатом разработчика. Windows SmartScreen покажет
+предупреждение («Подробнее → Выполнить в любом случае»). Пакет macOS подписывается ad-hoc
+(`scripts/adhoc-sign.cjs`): иначе на Apple Silicon он открывается как «приложение повреждено». Теперь
+Gatekeeper спрашивает обычное «неизвестный разработчик»: первый запуск правой кнопкой → «Открыть»,
+либо `xattr -dr com.apple.quarantine /Applications/BodySnatch.app`. Подпись и нотаризация требуют
 сертификатов разработчика (Apple Developer ID, сертификат подписи кода Windows).
 
 ## Ограничения и известные проблемы
