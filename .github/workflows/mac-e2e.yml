@@ -59,6 +59,16 @@ jobs:
           echo "== приложение после запасной установки: сертификат доверенный?"
           node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log('trusted:',JSON.parse(s).cert.trusted))"
 
+      - name: Варианты проверки доверия сертификату
+        run: |
+          F="$BODYSNATCH_DATA_DIR/certs/rootCA.pem"
+          for v in "-L -p basic" "" "-p ssl" "-L" "-p ssl -L"; do
+            echo "== security verify-cert -c F $v"; security verify-cert -c "$F" $v 2>&1 | tail -3; echo "exit=$?"
+          done
+          echo "== dump-trust-settings -d (администратор)"; security dump-trust-settings -d 2>&1 | head -20
+          echo "== dump-trust-settings (пользователь)"; security dump-trust-settings 2>&1 | head -10
+          echo "== find-certificate в System.keychain"; security find-certificate -a -Z -c "BodySnatch Desktop Root CA" /Library/Keychains/System.keychain 2>&1 | head -4
+
       - name: Системный прокси (кодом приложения)
         run: |
           echo "== включаем"; node scripts/cdp-call.mjs POST /api/proxy/on 90000 || true
