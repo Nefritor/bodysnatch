@@ -17,7 +17,6 @@ const T = {
   arrows: 950,
   sheen: 2000,
   title: 2250,
-  line: 2850,
   version: 3000,
   author: 3350,
   hold: 4700,
@@ -25,7 +24,6 @@ const T = {
 };
 
 const out = 'cubic-bezier(0.16, 1, 0.3, 1)';
-const spring = 'cubic-bezier(0.34, 1.45, 0.64, 1)';
 
 const anim = (name: string, delay: number, duration: number, easing = out) => ({
   animation: `${name} ${duration}ms ${easing} ${delay}ms both`,
@@ -50,7 +48,7 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
 
   return (
     <div
-      className="relative grid h-full cursor-pointer place-items-center overflow-hidden"
+      className="relative grid h-full cursor-pointer place-items-center"
       style={{
         opacity: leaving ? 0 : 1,
         transform: leaving ? 'scale(1.045)' : 'none',
@@ -75,7 +73,7 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
           className="relative grid size-[236px] place-items-center rounded-[58px] bg-white"
           style={{
             boxShadow:
-              '0 24px 60px rgb(0 0 0 / 38%), 0 4px 14px rgb(0 0 0 / 22%), inset 0 1px 0 rgb(255 255 255), inset 0 -2px 6px rgb(15 23 42 / 8%)',
+              '0 18px 44px rgb(0 0 0 / 26%), 0 3px 10px rgb(0 0 0 / 16%), inset 0 1px 0 rgb(255 255 255), inset 0 -2px 6px rgb(15 23 42 / 8%)',
             ...anim('bs-tile', 0, 900),
           }}
         >
@@ -117,7 +115,7 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
                 d={LOGO.blueArrow}
                 fill={LOGO.colors.blue}
                 style={{
-                  ...anim('bs-arrow-blue', T.arrows, 1250, spring),
+                  ...anim('bs-arrow-blue', T.arrows, 1250),
                   transformBox: 'fill-box',
                   transformOrigin: 'center',
                 }}
@@ -126,7 +124,7 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
                 d={LOGO.greenArrow}
                 fill={LOGO.colors.green}
                 style={{
-                  ...anim('bs-arrow-green', T.arrows + 160, 1250, spring),
+                  ...anim('bs-arrow-green', T.arrows + 160, 1250),
                   transformBox: 'fill-box',
                   transformOrigin: 'center',
                 }}
@@ -151,12 +149,6 @@ export const SplashScreen = ({ version, onDone }: SplashScreenProps) => {
         <h1 className="mt-7 text-[44px] leading-none font-semibold text-ink" style={anim('bs-title', T.title, 1100)}>
           BodySnatch
         </h1>
-
-        <div
-          aria-hidden
-          className="mt-4 h-px w-28 origin-center bg-gradient-to-r from-transparent via-ink-subtle to-transparent"
-          style={anim('bs-line', T.line, 900)}
-        />
 
         <div
           className="mt-3 text-[13px] tracking-[0.18em] text-ink-soft uppercase"
