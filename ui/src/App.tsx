@@ -48,6 +48,7 @@ export function App() {
   const [message, setMessage] = useState('');
   const initialized = useRef(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const stepBodyRef = useRef<HTMLDivElement | null>(null);
   const native = api.hasNativeShell();
 
   // Сообщаем окну, что мастер пройден: только на рабочем экране «закрыть» уходит
@@ -64,6 +65,53 @@ export function App() {
       api.shell('resize', { w: stepData.size.w, h: stepData.size.h });
     }
   }, [native, step, splash]);
+
+  // Окно шага подгоняется под содержимое: высота из constants.ts — минимум, а если содержимое стало
+  // выше (блок с ошибкой, предупреждение, длинное сообщение), окно вырастает, чтобы ничего не обрезалось,
+  // и возвращается к минимуму, когда лишнее исчезло.
+  useEffect(() => {
+    if (!native || splash || step === Step.Work || !state) return undefined;
+    const body = stepBodyRef.current;
+    const base = STEPS.find(({ key }) => key === step)?.size;
+    if (!body || !base) return undefined;
+    let frame = 0;
+    let sent = 0;
+    const fit = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const screen = body.firstElementChild as HTMLElement | null;
+        if (!screen) return;
+        const gap = Number.parseFloat(getComputedStyle(screen).rowGap) || 0;
+        const kids = [...screen.children] as HTMLElement[];
+        const natural = kids.reduce((sum, k) => sum + k.offsetHeight, 0) + gap * Math.max(0, kids.length - 1);
+        // сколько не хватает (или остаётся лишним) относительно текущей высоты окна
+        const wanted = Math.max(base.h, Math.ceil(window.innerHeight + natural - screen.offsetHeight));
+        if (Math.abs(wanted - sent) > 1) {
+          sent = wanted;
+          api.shell('resize', { w: base.w, h: wanted });
+        }
+      });
+    };
+    const resizeObserver = new ResizeObserver(fit);
+    const observeKids = () => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(body);
+      for (const kid of (body.firstElementChild?.children ?? []) as Iterable<Element>) resizeObserver.observe(kid);
+    };
+    observeKids();
+    // новые блоки внутри экрана (например, ошибка установки сертификата) появляются как новые элементы
+    const mutationObserver = new MutationObserver(() => {
+      observeKids();
+      fit();
+    });
+    mutationObserver.observe(body, { childList: true, subtree: true });
+    fit();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [native, splash, step, state]);
 
   // Окно показывается только когда отрисован первый осмысленный кадр
   const revealed = useRef(false);
@@ -205,7 +253,7 @@ export function App() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
+      <div ref={stepBodyRef} className="min-h-0 flex-1">
         {step === Step.Cert && (
           <CertScreen snap={state} busy={busy} onNext={() => setStep(Step.Proxy)} onRefresh={() => void refresh()} />
         )}

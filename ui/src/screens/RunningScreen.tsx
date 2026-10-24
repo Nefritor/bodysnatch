@@ -136,6 +136,23 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
     timer.current = window.setTimeout(() => resizeTo(bottom()), SETTLE_MS);
   };
 
+  // Содержимое блоков может измениться само (появилось предупреждение, добавили папку): окно следует за ним
+  useEffect(() => {
+    let frame = 0;
+    const refit = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => resizeTo(bottom()));
+    };
+    const observer = new ResizeObserver(refit);
+    for (const body of [rulesBody.current, queriesBody.current]) {
+      for (const kid of (body?.children ?? []) as Iterable<Element>) observer.observe(kid);
+    }
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [rulesOpen, queriesOpen, rows.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // начальный размер рабочего экрана: по факту отрисовки
   useEffect(() => {
     const id = window.requestAnimationFrame(() => resizeTo(bottom()));

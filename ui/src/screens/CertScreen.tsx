@@ -1,4 +1,4 @@
-/** Шаг сертификата. Установка идёт через помощника с запросом прав. */
+/** Шаг сертификата. Установку подтверждает системное окно (Windows, macOS). */
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import type { Snapshot } from '../types.js';
@@ -82,6 +82,14 @@ export const CertScreen = ({ snap, busy, onNext, onRefresh }: CertScreenProps) =
           </div>
         </div>
       </div>
+
+      {phase === 'installing' ? (
+        <p className="text-sm text-ink-soft" role="status">
+          {snap.platform === 'darwin'
+            ? 'Подтвердите установку в окне macOS: введите пароль или приложите палец. Окно могло открыться за другими.'
+            : 'Подтвердите установку в окне Windows.'}
+        </p>
+      ) : null}
 
       {fail && !trusted ? (
         <div className="lg-soft flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft" role="status">
