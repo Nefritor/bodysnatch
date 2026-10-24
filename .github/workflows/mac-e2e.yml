@@ -1,0 +1,105 @@
+name: mac-e2e
+
+# Сквозная проверка перехвата на macOS: приложение само ставит сертификат и PAC, Chrome открывает
+# подменяемый адрес. Показывает, на каком шаге цепочка рвётся.
+on:
+  workflow_dispatch:
+  push:
+    branches: [mac-debug]
+    paths: ['.github/workflows/mac-e2e.yml', 'scripts/cdp-call.mjs', 'proxy/src/platform/darwin.mjs']
+
+jobs:
+  e2e:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - name: Сборка .app (arm64)
+        run: npx electron-builder --mac dir --arm64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Данные и правила
+        run: |
+          mkdir -p "$RUNNER_TEMP/bs-data" "$RUNNER_TEMP/code/Telephony_online/_call"
+          echo "kekw-local" > "$RUNNER_TEMP/code/Telephony_online/_call/Page.js"
+          node -e "
+            const c = require('./config/rules.default.json');
+            const root = process.env.RUNNER_TEMP + '/code';
+            c.roots = [root];
+            c.moduleRoots = { Telephony_online: root };
+            require('fs').writeFileSync(process.env.RUNNER_TEMP + '/bs-data/rules.json', JSON.stringify(c, null, 2));
+          "
+          echo "BODYSNATCH_DATA_DIR=$RUNNER_TEMP/bs-data" >> "$GITHUB_ENV"
+
+      - name: Запуск приложения
+        run: |
+          "release/mac-arm64/BodySnatch.app/Contents/MacOS/BodySnatch" --remote-debugging-port=9333 > "$RUNNER_TEMP/app.log" 2>&1 &
+          sleep 10
+          node scripts/smoke-check.mjs 9333
+
+      - name: Сертификат (кодом приложения)
+        run: |
+          echo "== до"; node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('trusted:',j.cert.trusted)})" || true
+          echo "== установка (ждём до 90 с)"; node scripts/cdp-call.mjs POST /api/cert/install 90000 || true
+          echo "== после"; node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('trusted:',j.cert.trusted)})" || true
+          echo "== доверенные корни системы (BodySnatch)"; security find-certificate -a -c "BodySnatch" -Z 2>&1 | head -5 || true
+
+      - name: Сертификат запасным способом, если приложение не смогло
+        run: |
+          T=$(node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).cert.trusted))")
+          echo "trusted=$T"
+          if [ "$T" != "true" ]; then
+            echo "приложение не смогло установить сертификат; ставим через sudo в системную связку, чтобы проверить остальное"
+            sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$BODYSNATCH_DATA_DIR/certs/rootCA.pem"
+          fi
+
+      - name: Системный прокси (кодом приложения)
+        run: |
+          echo "== включаем"; node scripts/cdp-call.mjs POST /api/proxy/on 90000 || true
+          echo "== сетевые службы"; networksetup -listallnetworkservices
+          networksetup -listallnetworkservices | tail -n +2 | grep -v '^\*' | while read -r svc; do echo "-- $svc"; networksetup -getautoproxyurl "$svc"; done
+          echo "== scutil --proxy"; scutil --proxy
+
+      - name: Системный прокси запасным способом, если приложение не смогло
+        run: |
+          PAC=$(node scripts/cdp-call.mjs GET /api/state 20000 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).pacUrl))")
+          echo "pac=$PAC"
+          if ! scutil --proxy | grep -q "ProxyAutoConfigURLString"; then
+            echo "PAC не появился в системе после вызова приложения; ставим через sudo"
+            networksetup -listallnetworkservices | tail -n +2 | grep -v '^\*' | while read -r svc; do sudo networksetup -setautoproxyurl "$svc" "$PAC"; done
+            scutil --proxy
+          fi
+
+      - name: Chrome открывает подменяемый адрес
+        run: |
+          URL="https://fix-cdn.sbis.ru/static/resources/Telephony_online/_call/Page.js"
+          CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          ls "$CHROME" || { echo "Chrome на раннере не найден"; exit 0; }
+          perl -e 'alarm 90; exec @ARGV' "$CHROME" --headless=new --disable-gpu --no-first-run --user-data-dir="$RUNNER_TEMP/chrome" \
+            --virtual-time-budget=10000 --dump-dom "$URL" > "$RUNNER_TEMP/chrome-out.txt" 2> "$RUNNER_TEMP/chrome-err.txt" || true
+          echo "== stdout Chrome"; head -c 1500 "$RUNNER_TEMP/chrome-out.txt"
+          echo; echo "== stderr Chrome (хвост)"; tail -n 15 "$RUNNER_TEMP/chrome-err.txt"
+          if grep -q "kekw-local" "$RUNNER_TEMP/chrome-out.txt"; then echo "РЕЗУЛЬТАТ: ПОДМЕНА РАБОТАЕТ"; else echo "РЕЗУЛЬТАТ: ПОДМЕНЫ НЕТ"; fi
+
+      - name: Журнал приложения
+        if: always()
+        run: |
+          echo "== /api/log"; node scripts/cdp-call.mjs GET "/api/log?n=30" 20000 || true
+          echo "== shell.log"; cat "$BODYSNATCH_DATA_DIR/shell.log" 2>&1 | tail -n 40
+          echo "== вывод приложения"; cat "$RUNNER_TEMP/app.log" | tail -n 30
+          echo "== выключаем прокси"; node scripts/cdp-call.mjs POST /api/proxy/off 60000 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-e2e
+          path: |
+            ${{ runner.temp }}/app.log
+            ${{ runner.temp }}/bs-data/shell.log
+            ${{ runner.temp }}/chrome-out.txt
+            ${{ runner.temp }}/chrome-err.txt
+          if-no-files-found: warn
