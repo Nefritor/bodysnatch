@@ -19,7 +19,7 @@ export const Collapsible = ({ open, children, className, innerRef }: Collapsible
     // закрытый блок не должен получать фокус клавиатурой
     inert={!open}
   >
-    <div ref={innerRef} className="min-h-0 overflow-hidden">
+    <div ref={innerRef} className="-mx-1.5 min-h-0 overflow-hidden px-1.5">
       {children}
     </div>
   </div>

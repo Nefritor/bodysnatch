@@ -49,6 +49,16 @@ const VIA_LABEL: Record<string, string> = {
 };
 const viaLabel = (via: string) => VIA_LABEL[via] ?? via;
 
+/** Адрес без схемы и хоста: в узкой колонке важен путь, а хост одинаков у всех записей. */
+const shortUrl = (url: string) => {
+  try {
+    const u = new URL(url);
+    return u.pathname + u.search;
+  } catch {
+    return url;
+  }
+};
+
 /** Строка таблицы: фиксированные первые три колонки, последняя — по остатку. */
 const ROW = 'grid grid-cols-[74px_72px_160px_minmax(0,1fr)] items-center gap-2 px-3';
 
@@ -135,7 +145,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
   const caret = (open: boolean) => <IconChevron size={14} className={cn('shrink-0 text-brand', open && 'rotate-90')} />;
 
   const spoilerButton =
-    'flex w-full items-center justify-start gap-2 rounded-pill px-3 py-1.5 text-left text-[15px] font-semibold text-brand hover:bg-hover';
+    'flex w-full items-center justify-start gap-2 rounded-pill px-3 py-1.5 text-left text-[15px] font-semibold text-brand hover:text-brand-deep';
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -179,7 +189,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
         </Collapsible>
       </section>
 
-      <section ref={lastRef} className="lg -ml-[11px] w-[calc(100%+22px)] rounded-t-card px-4 py-2">
+      <section ref={lastRef} className="lg -mx-2 w-[calc(100%+16px)] rounded-t-card px-4 py-2">
         <button
           type="button"
           className={spoilerButton}
@@ -257,7 +267,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, rulesSlot
                         <Badge title={e.module || e.via}>{highlight(e.module || viaLabel(e.via), query)}</Badge>
                       </span>
                       <span className="truncate font-mono text-ink" title={e.file || e.url}>
-                        {highlight(e.file ? tailAfterModule(e.file, e.module || '') : e.note || e.url, query)}
+                        {highlight(e.file ? tailAfterModule(e.file, e.module || '') : e.note || shortUrl(e.url), query)}
                       </span>
                     </div>
                   ))}

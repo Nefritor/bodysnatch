@@ -110,7 +110,7 @@ export const MasksPanel = ({ mask, onChange, files, onFilesChange }: MasksPanelP
                 adding === kind ? (
                   // редактор лежит поверх бэджей: в потоке он раздвигал строку,
                   // и элементы вылезали за её пределы
-                  <div className="absolute top-1/2 -right-14 z-20 flex -translate-y-1/2 items-center gap-1 rounded-pill border border-glass-line bg-surface-glass px-0.75 py-0.5 shadow-matte backdrop-blur-md">
+                  <div className="absolute top-1/2 -right-14 z-20 flex -translate-y-1/2 items-center gap-1 rounded-pill border border-glass-line bg-surface px-0.75 py-0.5 shadow-matte">
                     <Input
                       scale="xs"
                       autoFocus

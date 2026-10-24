@@ -81,10 +81,10 @@
 /* ── Светлый режим: значения по умолчанию ─────────────────────────────────── */
 :root {
   --c-ink: #10131a;
-  --c-ink-soft: #475063;
-  --c-ink-muted: #6b7280;
-  --c-ink-subtle: #7b8496;
-  --c-placeholder: #7a8394;
+  --c-ink-soft: #343b4a;
+  --c-ink-muted: #4a5262;
+  --c-ink-subtle: #667083;
+  --c-placeholder: #667083;
 
   --c-bg1: #f8f9fb;
   --c-bg2: #eff1f4;
@@ -130,8 +130,7 @@
   --lg-edge: rgb(255 255 255 / 85%);
   --lg-edge-2: rgb(255 255 255 / 28%);
   --lg-hair: rgb(17 24 39 / 11%);
-  --lg-sheen: rgb(255 255 255 / 50%);
-  --lg-sheen-2: rgb(255 255 255 / 18%);
+  --lg-sheen: rgb(255 255 255 / 38%);
   --lg-glow: rgb(255 255 255 / 14%);
   --lg-shadow: 0 14px 34px rgb(20 26 40 / 12%), 0 2px 6px rgb(20 26 40 / 6%);
   --lg-thumb: rgb(255 255 255 / 78%);
@@ -141,10 +140,10 @@
 /* ── Тёмный режим ─────────────────────────────────────────────────────────── */
 [data-mode="dark"] {
   --c-ink: #e9ecf1;
-  --c-ink-soft: #c3c9d4;
-  --c-ink-muted: #a3aab6;
-  --c-ink-subtle: #8b929e;
-  --c-placeholder: #9aa2b0;
+  --c-ink-soft: #d6dbe4;
+  --c-ink-muted: #b6bdc9;
+  --c-ink-subtle: #9aa2af;
+  --c-placeholder: #a4acb9;
 
   --c-bg1: #16191d;
   --c-bg2: #0e1013;
@@ -189,8 +188,7 @@
   --lg-edge: rgb(255 255 255 / 34%);
   --lg-edge-2: rgb(255 255 255 / 9%);
   --lg-hair: rgb(0 0 0 / 45%);
-  --lg-sheen: rgb(255 255 255 / 10%);
-  --lg-sheen-2: rgb(255 255 255 / 3%);
+  --lg-sheen: rgb(255 255 255 / 9%);
   --lg-glow: rgb(255 255 255 / 5%);
   --lg-shadow: 0 16px 38px rgb(0 0 0 / 42%), 0 2px 6px rgb(0 0 0 / 30%);
   --lg-thumb: rgb(255 255 255 / 24%);
@@ -279,13 +277,13 @@
      теряется, на тёмной ниже — иначе размытие не читается.
      Атрибут ставит только Electron-оболочка, C#-хост его не выставляет. */
   [data-shell="electron"] {
-    --glass-alpha: 45%;
-    --glass-alpha-top: 52%;
+    --glass-alpha: 74%;
+    --glass-alpha-top: 80%;
   }
 
   [data-mode="dark"][data-shell="electron"] {
-    --glass-alpha: 40%;
-    --glass-alpha-top: 48%;
+    --glass-alpha: 54%;
+    --glass-alpha-top: 62%;
   }
 
   [data-shell="electron"] #root {
@@ -302,6 +300,13 @@
         color-mix(in srgb, var(--c-bg1) var(--glass-alpha), transparent),
         color-mix(in srgb, var(--c-bg2) var(--glass-alpha), transparent)
       );
+  }
+
+  /* встроенные кнопки поля поиска (крестик, стрелка) выбиваются из стиля */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    appearance: none;
+    -webkit-appearance: none;
   }
 
   ::-webkit-scrollbar {
@@ -374,7 +379,7 @@
     z-index: -1;
     border-radius: inherit;
     pointer-events: none;
-    background: linear-gradient(135deg, var(--lg-sheen) 0%, transparent 36%, transparent 64%, var(--lg-sheen-2) 100%);
+    background: radial-gradient(120% 90% at 0% 0%, var(--lg-sheen), transparent 62%);
   }
 
   .lg {

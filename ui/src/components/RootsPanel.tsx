@@ -85,7 +85,7 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
         </PanelTitle>
       </PanelHead>
 
-      <div className="p-2 border border-glass-line bg-tint-c border-dashed rounded-md h-37.5 overflow-auto">
+      <div className="lg-soft h-37.5 overflow-auto rounded-lg border-dashed p-2">
         {roots.length === 0 ? (
           <div className="flex items-center justify-center text-sm text-ink-muted h-full">
             Папки с кодом не добавлены

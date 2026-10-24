@@ -193,9 +193,9 @@ export function App() {
                 className={cn(
                   'rounded-pill border px-2.5 py-0.5 text-xs backdrop-blur-md transition-colors',
                   i === activeIdx
-                    ? 'border-brand/25 bg-brand-soft font-semibold text-brand'
+                    ? 'border-brand/40 bg-brand-soft font-semibold text-brand'
                     : 'border-glass-line bg-field text-ink-muted hover:bg-glass-strong',
-                  !reachable && 'cursor-default opacity-60',
+                  i !== activeIdx && !reachable && 'cursor-default opacity-60',
                 )}
               >
                 {i + 1}. {s.label}

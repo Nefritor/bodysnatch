@@ -27,7 +27,8 @@ const SHOW_SPLASH = process.argv.includes('--splash');
 
 // одна и та же папка данных для приложения и для `npm start`
 app.setName('BodySnatch');
-app.setPath('userData', path.join(app.getPath('appData'), 'BodySnatch'));
+// BODYSNATCH_DATA_DIR — отдельный профиль (проверки, вторая копия рядом с рабочей)
+app.setPath('userData', process.env.BODYSNATCH_DATA_DIR || path.join(app.getPath('appData'), 'BodySnatch'));
 const DATA = app.getPath('userData');
 const LOG = path.join(DATA, 'shell.log');
 
@@ -318,6 +319,10 @@ function applyResize(width, height) {
   const h = Math.min(height, area.height);
   win.setMinimumSize(w, Math.min(h, 200));
   win.setContentSize(w, h);
+  // выросшее окно сдвигаем вверх, если оно упёрлось в нижний край рабочей области
+  const b = win.getBounds();
+  const overflow = b.y + b.height - (area.y + area.height);
+  if (overflow > 0) win.setPosition(b.x, Math.max(area.y, b.y - overflow));
 }
 
 ipcMain.on('bs', (event, msg) => {

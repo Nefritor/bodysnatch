@@ -7,3 +7,4 @@ coverage/
 *.log
 *.key.pem
 config/rules.user.json
+release-out/
