@@ -285,6 +285,10 @@ function createWindow() {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  // пользователь сам двигает окно: возвращать его на прежнее место больше не нужно
+  win.on('will-move', () => {
+    homeY = null;
+  });
   win.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -338,6 +342,9 @@ async function quitApp() {
   app.exit(0);
 }
 
+/** Верх окна до того, как его пришлось поднять из-за нехватки места снизу (см. applyResize). */
+let homeY = null;
+
 /**
  * Размер окна под текущий шаг. Меняется сразу, без анимации: плавность даёт сама страница
  * (раскрытие блоков на CSS), а окно лишь заранее освобождает или подтягивает место.
@@ -350,10 +357,14 @@ function applyResize(width, height) {
   const h = Math.min(height, area.height);
   win.setMinimumSize(w, Math.min(h, 200));
   win.setContentSize(w, h);
-  // выросшее окно сдвигаем вверх, если оно упёрлось в нижний край рабочей области
+  // Окно растёт вниз от верхнего края. Если внизу не хватает места, его поднимают ровно настолько,
+  // чтобы оно уместилось, а прежняя высота позиции запоминается: когда окно снова станет ниже,
+  // оно возвращается на своё место, а не остаётся наверху. Ручное перетаскивание сбрасывает память.
   const b = win.getBounds();
-  const overflow = b.y + b.height - (area.y + area.height);
-  if (overflow > 0) win.setPosition(b.x, Math.max(area.y, b.y - overflow));
+  const target = homeY ?? b.y;
+  const y = Math.max(area.y, Math.min(target, area.y + area.height - b.height));
+  homeY = y < target ? target : null;
+  if (y !== b.y) win.setPosition(b.x, y);
 }
 
 // обновления: окно спрашивает состояние и отдаёт команды
