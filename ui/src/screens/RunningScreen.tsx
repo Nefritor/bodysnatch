@@ -81,7 +81,7 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, onSetting
   }, [snap.enabled, pending]);
   const checked = pending ?? snap.enabled;
 
-  // отдельный Chrome с подменой: работает в обход системных настроек (и VPN)
+  // отдельный Chrome в специальном профиле: работает в обход системных настроек (и VPN)
   const [browserNote, setBrowserNote] = useState('');
   const [browserBusy, setBrowserBusy] = useState(false);
   const openBrowser = async () => {
@@ -227,14 +227,14 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, onSetting
             disabled={browserBusy}
             title="Отдельное окно Chrome (или Edge) со своим профилем: подмена работает независимо от системных настроек и VPN"
           >
-            Открыть Chrome с подменой
+            Открыть Chrome в специальном профиле
           </button>
           {browserNote ? <span className="text-ink-muted">{browserNote}</span> : null}
         </div>
         {overridden ? (
           <p className="rounded-lg border border-warn/35 bg-warn/12 px-3 py-2 text-xs text-warn" role="status">
             Системный прокси не применяется: его перекрывает VPN или другое приложение, поэтому обычные браузеры подмену
-            не получат. Откройте Chrome с подменой — он работает в обход системных настроек.
+            не получат. Откройте Chrome в специальном профиле — он работает в обход системных настроек.
           </p>
         ) : null}
       </div>
