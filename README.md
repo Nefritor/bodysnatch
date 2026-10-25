@@ -8,6 +8,40 @@
 перехватывает запросы только к сайтам из заданной маски, а всё остальное браузер делает
 напрямую.
 
+## Скриншоты
+
+Мастер настройки из трёх шагов и рабочий экран с журналом запросов. Адреса и папки на снимках вымышленные.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/working-dark.png">
+    <img src="docs/screenshots/working-light.png" alt="Рабочий экран BodySnatch: папки с кодом, маска сайта и журнал запросов" width="560">
+  </picture>
+</p>
+
+<table>
+  <tr>
+    <td align="center"><b>1. Сертификат</b></td>
+    <td align="center"><b>2. Прокси</b></td>
+  </tr>
+  <tr>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/certificate-dark.png">
+        <img src="docs/screenshots/certificate-light.png" alt="Шаг «Сертификат»">
+      </picture>
+    </td>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/proxy-dark.png">
+        <img src="docs/screenshots/proxy-light.png" alt="Шаг «Прокси»">
+      </picture>
+    </td>
+  </tr>
+</table>
+
+Тема окна переключается кнопкой в шапке (авто, светлая, тёмная); на GitHub картинки подстраиваются под вашу тему.
+
 ## Быстрый старт
 
 1. Запустите приложение. При первом запуске покажется приветствие, нажмите «Начать».
