@@ -72,6 +72,10 @@
           {
             "value": "saby.ru",
             "enabled": true
+          },
+          {
+            "value": "saby.top",
+            "enabled": true
           }
         ],
         "extra": []
