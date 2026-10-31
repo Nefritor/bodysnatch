@@ -89,7 +89,8 @@ async function launch(executable, dataDir, explicitProfile) {
     : ['--background'];
   const child = spawn(bundle ? '/usr/bin/open' : executable, args, {
     env,
-    windowsHide: true,
+    // У GUI-приложения нет консольного окна. SW_HIDE в STARTUPINFO поглощает
+    // первый явный показ окна; фон задаётся собственным --background приложения.
     detached: true,
     stdio: 'ignore',
   });

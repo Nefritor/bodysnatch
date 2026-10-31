@@ -57,6 +57,10 @@ function log(message) {
 
 let host = null;
 let win = null;
+let signalUiReady;
+const uiReady = new Promise((resolve) => {
+  signalUiReady = resolve;
+});
 let tray = null;
 let configured = false;
 let revealWindow = () => {};
@@ -118,7 +122,9 @@ async function startEngine() {
       else if (action === 'install') await updater.install();
       return updater.state();
     },
-    onWindow: (action) => {
+    onWindow: async (action) => {
+      await uiReady;
+      if (!win || win.isDestroyed()) throw new Error('окно приложения недоступно');
       if (action === 'show') showWindow();
       else if (action === 'hide') hideToTray();
       else if (action === 'minimize') win?.minimize();
@@ -268,6 +274,7 @@ function createWindow() {
   // Окно показывается, когда страница сообщила «готово» (первый кадр отрисован, размер выставлен):
   // иначе перед заставкой на мгновение мелькает пустое окно другого размера.
   const reveal = () => {
+    signalUiReady();
     if (START_HIDDEN || !win || win.isDestroyed() || win.isVisible()) return;
     // Первые кадры нового окна с акрилом — пустая серая плашка. Показываем окно прозрачным и
     // проявляем, когда содержимое уже на месте.
