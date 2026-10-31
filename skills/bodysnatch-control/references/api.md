@@ -1,6 +1,6 @@
 # BodySnatch Control API v1
 
-API живёт в процессе движка, отдельно от прокси, на случайном порту `127.0.0.1`. Работает и в Electron, и в режиме `npm start`. Приложение должно быть запущено. Клиент читает `<профиль>/control-api.json`:
+API живёт в процессе движка, отдельно от прокси, на случайном порту `127.0.0.1`. Работает и в Electron, и в режиме `npm start`. Клиент автоматически запускает установленную версию 0.1.5+, если API недоступен. Для другого пути используйте --app или BODYSNATCH_APP; --no-start запрещает запуск. POST /api/quit при отсутствии приложения возвращает alreadyStopped:true без запуска. Клиент читает `<профиль>/control-api.json`:
 
 ```json
 {
@@ -34,7 +34,7 @@ JSON POST: `Content-Type: application/json`, объект, максимум 1 Mi
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/enabled`                    | `{"enabled":true}` или `false`: общий переключатель подмены и системного PAC. Начальное состояние — off. Внешнее снятие PAC останавливает системный режим; отдельный браузерный режим от него не зависит.                                      |
 | `POST /api/proxy/on`, `/api/proxy/off` | `{}`; совместимые команды общего включения/выключения.                                                                                                                                                                                         |
-| `POST /api/config`                     | Частичный конфиг напрямую или `{"config":{...}}`. Поля: sites, roots, moduleRoots, servicePrefixes, upstreamProxy, liveReload, theme. Массивы и moduleRoots заменяются целиком.                                                                |
+| `POST /api/config`                     | Частичный конфиг напрямую или `{"config":{...}}`. Поля: sites, roots, moduleRoots, servicePrefixes, theme. Массивы и moduleRoots заменяются целиком.                                                                                           |
 | `POST /api/site`                       | `{"index":0,"patch":{"mask":{...},"files":[...]}}` или `{"id":"...","patch":{...}}`; обновляет только указанные поля сайта. id имеет приоритет над index.                                                                                      |
 | `POST /api/roots`                      | `{"action":"add","path":"F:/code"}`, `{"action":"remove","path":"F:/code"}` или `{"action":"replace","path":"F:/old","replacement":"F:/new"}`. Замена переносит moduleRoots и сохраняет enabled. Удаление снимает выбор модулей из этой папки. |
 | `POST /api/module-root`                | `{"module":"Telephony_online","root":"F:/code"}` — выбрать модуль из включённой папки, которая уже есть в roots; `root:null` — снять выбор.                                                                                                    |
@@ -47,13 +47,11 @@ JSON POST: `Content-Type: application/json`, объект, максимум 1 Mi
   "roots": [{ "path": "F:/projects/build/resources", "enabled": true }],
   "moduleRoots": { "Telephony_online": "F:/projects/build/resources" },
   "servicePrefixes": ["static/resources"],
-  "liveReload": true,
-  "upstreamProxy": "",
   "theme": "dark"
 }
 ```
 
-Сайт: `{id?,enabled?,useLocal?,mask?,files?,match?,patterns?}`. Маска содержит массивы `prefixes`, `envs`, `hosts`, каждый элемент `{value:string,enabled:boolean,custom?:boolean}`. `files` — такой же массив расширений без точки. Пустой files означает отсутствие фильтра; все элементы enabled:false запрещают все расширения. `patterns`, если задан непустым, имеет приоритет над mask/match. Для маски без префикса используй значение `отсутствует`. `match` принимает строку или массив glob URL. Добавление доменов вне ограничений существующего CA требует явного перевыпуска и повторной установки. `upstreamProxy` — пустая строка или HTTP proxy `host:port`; SOCKS и HTTPS-соединение с самим прокси не поддержаны. `theme` — auto/light/dark; окно получает обновление через события.
+Сайт: `{id?,enabled?,useLocal?,mask?,files?,match?,patterns?}`. Маска содержит массивы `prefixes`, `envs`, `hosts`, каждый элемент `{value:string,enabled:boolean,custom?:boolean}`. `files` — такой же массив расширений без точки. Пустой files означает отсутствие фильтра; все элементы enabled:false запрещают все расширения. `patterns`, если задан непустым, имеет приоритет над mask/match. Для маски без префикса используй значение `отсутствует`. `match` принимает строку или массив glob URL. Добавление доменов вне ограничений существующего CA требует явного перевыпуска и повторной установки. `theme` — auto/light/dark; окно получает обновление через события.
 
 ## Сертификат и оболочка
 

@@ -9,7 +9,6 @@ import { execFile } from 'node:child_process';
 import { buildRoots, buildModules, firstSite } from './scan.mjs';
 import { touchConfig, pickSite, resolveLocal } from './rules.mjs';
 import { normalizeConfig, saveConfig } from './config.mjs';
-import { parseProxy } from './upstream.mjs';
 
 const ok = (json = {}) => ({ status: 200, json: { ok: true, ...json } });
 const fail = (message, status = 200, extra = {}) => ({
@@ -52,7 +51,7 @@ export function makeApi(engine) {
   function validateConfig(src) {
     if (!object(src)) return 'ожидается объект config';
     for (const key of Object.keys(src)) {
-      if (!['sites', 'roots', 'moduleRoots', 'servicePrefixes', 'upstreamProxy', 'liveReload', 'theme'].includes(key))
+      if (!['sites', 'roots', 'moduleRoots', 'servicePrefixes', 'theme'].includes(key))
         return 'неизвестная или неизменяемая настройка: ' + key;
     }
     if (
@@ -81,13 +80,7 @@ export function makeApi(engine) {
       (!Array.isArray(src.servicePrefixes) || !src.servicePrefixes.every((v) => typeof v === 'string'))
     )
       return 'servicePrefixes: ожидается массив строк';
-    if ('liveReload' in src && typeof src.liveReload !== 'boolean') return 'liveReload: ожидается boolean';
     if ('theme' in src && !['auto', 'light', 'dark'].includes(src.theme)) return 'theme: auto, light или dark';
-    if (
-      'upstreamProxy' in src &&
-      (typeof src.upstreamProxy !== 'string' || (src.upstreamProxy.trim() && !parseProxy(src.upstreamProxy)))
-    )
-      return 'upstreamProxy: ожидается host:port или пустая строка';
     if ('sites' in src) {
       if (!Array.isArray(src.sites)) return 'sites: ожидается массив';
       for (const site of src.sites) {
@@ -186,8 +179,6 @@ export function makeApi(engine) {
       port: engine.port,
       pacUrl: engine.pacUrl(),
       hosts: engine.hostGlobs(),
-      upstream: engine.effectiveUpstream(),
-      liveReload: config.liveReload === true,
       stats: proxy.stats(),
       cert: {
         trusted,

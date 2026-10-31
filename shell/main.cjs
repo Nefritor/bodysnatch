@@ -26,6 +26,7 @@ const argValue = (name) => {
 const UI_OVERRIDE = argValue('--ui');
 /** --splash: показать приветственный экран (npm run splash). */
 const SHOW_SPLASH = process.argv.includes('--splash');
+const START_HIDDEN = process.argv.includes('--background');
 
 // одна и та же папка данных для приложения и для `npm start`
 app.setName('BodySnatch');
@@ -267,7 +268,7 @@ function createWindow() {
   // Окно показывается, когда страница сообщила «готово» (первый кадр отрисован, размер выставлен):
   // иначе перед заставкой на мгновение мелькает пустое окно другого размера.
   const reveal = () => {
-    if (!win || win.isDestroyed() || win.isVisible()) return;
+    if (START_HIDDEN || !win || win.isDestroyed() || win.isVisible()) return;
     // Первые кадры нового окна с акрилом — пустая серая плашка. Показываем окно прозрачным и
     // проявляем, когда содержимое уже на месте.
     win.setOpacity(0);
@@ -285,6 +286,7 @@ function createWindow() {
     if (DEV) win.webContents.openDevTools({ mode: 'detach' });
   };
   revealWindow = reveal;
+  if (START_HIDDEN) ensureTray();
   setTimeout(reveal, 5000); // страница не ответила — не оставляем приложение невидимым
   // F12 и Ctrl/Cmd+Shift+I: меню у окна нет, поэтому вешаем обработчик сами
   win.webContents.on('before-input-event', (event, input) => {
@@ -422,7 +424,9 @@ ipcMain.on('bs', (event, msg) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => showWindow());
+  app.on('second-instance', (_event, argv) => {
+    if (!argv.includes('--background')) showWindow();
+  });
 
   app.whenReady().then(async () => {
     log(`запуск ${app.getVersion()} (${process.platform}/${process.arch})`);

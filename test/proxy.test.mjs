@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { startProxy, viaProxy, httpsViaProxy, tmpdir, HOST, makeConfig } from './helpers.mjs';
+import { startProxy, viaProxy, httpsViaProxy, tmpdir, HOST } from './helpers.mjs';
 
 const setup = async (siteHandler, extra = {}) => {
   const root = tmpdir('proxy');
@@ -189,45 +189,6 @@ test('WebSocket/Upgrade доходит до сервера и работает �
       req.end();
     });
     assert.equal(got, 'echo:ping');
-  } finally {
-    await t.close();
-  }
-});
-
-test('live reload: в HTML вставляется скрипт, события доходят до страницы', async () => {
-  const root = tmpdir('live');
-  fs.mkdirSync(path.join(root, 'mod'));
-  const config = makeConfig(root, { liveReload: true });
-  const t = await startProxy({
-    root,
-    config,
-    siteHandler: (req, res) => {
-      res.writeHead(200, { 'content-type': 'text/html' });
-      res.end('<html><head></head><body>hi</body></html>');
-    },
-  });
-  try {
-    const page = await viaProxy(t.port, `http://${HOST}/index.html`, { headers: { accept: 'text/html' } });
-    assert.match(page.body, /<script src="\/__bodysnatch\/livereload\.js"><\/script><\/head>/);
-    assert.equal(Number(page.headers['content-length']), Buffer.byteLength(page.body));
-
-    const message = await new Promise((resolve, reject) => {
-      const req = http.request(
-        { host: '127.0.0.1', port: t.port, path: `http://${HOST}/__bodysnatch/events`, headers: { host: HOST } },
-        (res) => {
-          res.on('data', (c) => {
-            const text = String(c);
-            if (text.startsWith('data:')) {
-              req.destroy();
-              resolve(text);
-            } else t.proxy.notifyFilesChanged(['a.css']);
-          });
-        },
-      );
-      req.on('error', (e) => (e.code === 'ECONNRESET' ? null : reject(e)));
-      req.end();
-    });
-    assert.match(message, /"type":"css"/);
   } finally {
     await t.close();
   }

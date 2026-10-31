@@ -1,6 +1,6 @@
 /** Шаг правил — папки с кодом, модули и маска сайта. */
 import type { MaskOption, Snapshot, SiteMask } from '../types.js';
-import { MasksPanel, RootsPanel, SettingsPanel } from '../components/index.js';
+import { MasksPanel, RootsPanel } from '../components/index.js';
 import { Button } from '../ui/Button.js';
 
 export type RulesScreenProps = {
@@ -29,7 +29,12 @@ export const RulesScreen = ({
     <div className="flex flex-col gap-3">
       <RootsPanel roots={snap.roots} modules={snap.modules} onChanged={onChanged} />
       <MasksPanel mask={mask} onChange={onMaskChange} files={files} onFilesChange={onFilesChange} />
-      {embedded ? <SettingsPanel snap={snap} onChanged={onChanged} /> : null}
+      {snap.cert.constraints.uncovered.length ? (
+        <p className="text-xs text-warn" role="status">
+          Сертификат не покрывает: {snap.cert.constraints.uncovered.join(', ')}. Откройте мастер настройки, чтобы
+          перевыпустить сертификат.
+        </p>
+      ) : null}
     </div>
   );
 

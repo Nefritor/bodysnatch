@@ -90,18 +90,6 @@ test('после аварии наш PAC снимается при следую�
   }
 });
 
-test('корпоративный прокси из системы становится запасным маршрутом PAC и upstream', async () => {
-  const platform = fakePlatform({ pacUrl: '', manual: { enabled: true, server: 'http=corp:3128;https=corp:3129' } });
-  const { engine } = await boot(platform);
-  try {
-    await engine.enableSystemProxy();
-    assert.equal(engine.effectiveUpstream(), 'corp:3129');
-    assert.match(engine.pacText(), /PROXY corp:3129; DIRECT/);
-  } finally {
-    await engine.stop();
-  }
-});
-
 test('смена маски меняет PAC и перезаписывает системную настройку', async () => {
   const platform = fakePlatform();
   const { engine } = await boot(platform);

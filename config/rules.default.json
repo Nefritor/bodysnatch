@@ -82,7 +82,5 @@
       },
       "maps": []
     }
-  ],
-  "liveReload": false,
-  "upstreamProxy": ""
+  ]
 }

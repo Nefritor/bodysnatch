@@ -8,7 +8,7 @@ import { EventEmitter } from 'node:events';
 import { loadConfig, saveConfig } from './config.mjs';
 import { ensureCA, removeCA, baseDomains, domainPermitted } from './ca.mjs';
 import { createProxy } from './proxy.mjs';
-import { createUpstream, parseProxy } from './upstream.mjs';
+import { createUpstream } from './upstream.mjs';
 import { FileCache } from './fileindex.mjs';
 import { buildPac } from './pac.mjs';
 import { compile } from './rules.mjs';
@@ -18,14 +18,6 @@ import { launchBrowser } from './browser.mjs';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { startControlApi } from './control.mjs';
-
-/** "http=a:1;https=b:2" или "a:1" → "a:1" */
-function manualServer(value) {
-  const s = String(value || '');
-  if (!s.includes('=')) return s;
-  const parts = Object.fromEntries(s.split(';').map((p) => p.split('=')));
-  return parts.https || parts.http || '';
-}
 
 /**
  * @param {object} o
@@ -74,23 +66,13 @@ export async function createEngine({
 
   const files = new FileCache({
     onChange: (names) => {
-      proxy.notifyFilesChanged(names);
       events.emit('files', names);
     },
   });
   files.watch(rootPaths());
 
-  let upstreamFromSystem = '';
-  const upstream = createUpstream({
-    getProxy: () => config.upstreamProxy || upstreamFromSystem,
-    log,
-  });
-
-  const fallbackRoute = () => {
-    const p = parseProxy(config.upstreamProxy || upstreamFromSystem);
-    return p ? `PROXY ${p.host}:${p.port}; DIRECT` : 'DIRECT';
-  };
-  const pacText = () => buildPac(config, listenPort || basePort, fallbackRoute());
+  const upstream = createUpstream({ log });
+  const pacText = () => buildPac(config, listenPort || basePort);
 
   const proxy = createProxy({
     enabled: false,
@@ -172,7 +154,6 @@ export async function createEngine({
     const tmp = snapshotFile + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify({ previous, pacUrl: pacBase() }), { mode: 0o600 });
     fs.renameSync(tmp, snapshotFile);
-    upstreamFromSystem = previous && previous.manual?.enabled ? manualServer(previous.manual.server) : '';
     try {
       await platform.setPac(pacUrl());
       if (!ownsSystemPac(await platform.proxyState())) throw new Error('система не включила PAC BodySnatch');
@@ -230,7 +211,6 @@ export async function createEngine({
     clearSnapshot();
     cache.sys = null;
     enabledAt = 0;
-    upstreamFromSystem = '';
     events.emit('state');
   }
 
@@ -343,7 +323,6 @@ export async function createEngine({
         canTighten: !ca.domains && !!needed,
       };
     },
-    effectiveUpstream: () => config.upstreamProxy || upstreamFromSystem,
     rootPaths,
     hostGlobs: () => compile(config).hostGlobs,
     enableSystemProxy,

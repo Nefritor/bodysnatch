@@ -43,11 +43,6 @@ const HOP = new Set([
   'upgrade',
 ]);
 
-const LIVE_PATH = '/__bodysnatch/';
-const LIVE_SCRIPT = `(()=>{if(window.__bsLR)return;window.__bsLR=1;const es=new EventSource('${LIVE_PATH}events');es.onmessage=(e)=>{let d;try{d=JSON.parse(e.data)}catch{return}if(d.type==='css'){document.querySelectorAll('link[rel~=stylesheet]').forEach((l)=>{const u=new URL(l.href);u.searchParams.set('__bs',Date.now());const n=l.cloneNode();n.href=u.href;n.onload=()=>l.remove();l.after(n)})}else location.reload()}})();`;
-const LIVE_TAG = `<script src="${LIVE_PATH}livereload.js"></script>`;
-const MAX_LIVE_HTML = 8 * 1024 * 1024;
-
 const isLoopback = (h) => h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]';
 const LOG_CAP = 600;
 
@@ -81,7 +76,6 @@ export function createProxy({
   const state = { enabled };
   const hits = { local: 0, remote: 0 };
   let logSeq = 0;
-  const sse = new Set();
   let ownPort = 0;
 
   const ctxFor = (host) => {
@@ -179,14 +173,6 @@ export function createProxy({
       if (HOP.has(k) || connectionHeaders.has(k) || k === 'host' || k.startsWith('proxy-')) continue;
       headers[k] = v;
     }
-    const injectLive =
-      config.liveReload === true &&
-      debugging &&
-      req.method === 'GET' &&
-      (req.headers['sec-fetch-dest'] === 'document' || /text\/html/.test(String(req.headers.accept || '')));
-    // чтобы вставить скрипт, нужен несжатый HTML; остальные ответы идут как есть
-    if (injectLive) headers['accept-encoding'] = 'identity';
-
     const upReq = upstream.request(target, { method: req.method, headers, timeout: upstreamTimeoutMs }, (up) => {
       up.on('error', (error) => {
         record({ via: 'error', status: 502, url, note: error.message });
@@ -217,60 +203,6 @@ export function createProxy({
         delete out.pragma;
       }
 
-      const contentType = String(out['content-type'] || '');
-      const isHtml = /text\/html/i.test(contentType) && !/charset\s*=\s*["']?utf-(?:16|32)/i.test(contentType);
-      if (
-        injectLive &&
-        isHtml &&
-        !out['content-encoding'] &&
-        up.statusCode === 200 &&
-        !(Number(out['content-length']) > MAX_LIVE_HTML)
-      ) {
-        const chunks = [];
-        let size = 0;
-        let streaming = false;
-        up.on('data', (chunk) => {
-          size += chunk.length;
-          if (streaming) return;
-          chunks.push(chunk);
-          if (size <= MAX_LIVE_HTML) return;
-          // Неизвестный/огромный HTML отдаём потоком, не накапливая всё тело в памяти.
-          streaming = true;
-          up.pause();
-          res.writeHead(200, out);
-          const buffered = Buffer.concat(chunks);
-          chunks.length = 0;
-          const ready = res.write(buffered);
-          const resume = () => {
-            if (!res.destroyed) up.pipe(res);
-          };
-          if (ready) resume();
-          else res.once('drain', resume);
-        });
-        up.on('end', () => {
-          if (streaming) {
-            hits.remote += 1;
-            record({ via: 'passthrough', status: 200, url, bytes: size, note: 'HTML превышает лимит live-reload' });
-            return;
-          }
-          // ASCII-разметка вставляется между байтами: исходная кодировка HTML сохраняется.
-          const html = Buffer.concat(chunks);
-          const head = html.toString('latin1').search(/<\/head>/i);
-          const at = head < 0 ? 0 : head;
-          const body = Buffer.concat([html.subarray(0, at), Buffer.from(LIVE_TAG), html.subarray(at)]);
-          out['content-length'] = body.length;
-          delete out.etag;
-          delete out['content-md5'];
-          delete out.digest;
-          delete out['content-digest'];
-          res.writeHead(200, out);
-          res.end(body);
-          hits.remote += 1;
-          record({ via: 'passthrough', status: 200, url, bytes: body.length, note: 'live-reload' });
-        });
-        return;
-      }
-
       let bytes = 0;
       up.on('data', (c) => {
         bytes += c.length;
@@ -298,26 +230,6 @@ export function createProxy({
     else upReq.end();
   };
 
-  // ── служебные адреса на подменяемых хостах ──────────────────────────────────
-  const serveInternal = (req, res, target) => {
-    if (target.pathname === LIVE_PATH + 'livereload.js') {
-      res.writeHead(200, { 'content-type': MIME['.js'], 'cache-control': 'no-store' });
-      return res.end(LIVE_SCRIPT);
-    }
-    if (target.pathname === LIVE_PATH + 'events') {
-      res.writeHead(200, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-store',
-        connection: 'keep-alive',
-      });
-      res.write(': ok\n\n');
-      sse.add(res);
-      res.on('close', () => sse.delete(res));
-      return undefined;
-    }
-    return plain(res, 404, 'BodySnatch');
-  };
-
   const handle = async (req, res) => {
     try {
       let target;
@@ -337,10 +249,6 @@ export function createProxy({
           return res.end(pac() || '');
         }
         return plain(res, 404, 'BodySnatch');
-      }
-
-      if (target.pathname.startsWith(LIVE_PATH) && hostMatches(config, target.hostname)) {
-        return serveInternal(req, res, target);
       }
 
       const site = state.enabled ? pickSite(config, target.href) : null;
@@ -459,11 +367,6 @@ export function createProxy({
     return undefined;
   });
 
-  const heartbeat = setInterval(() => {
-    for (const res of sse) res.write(': \n\n');
-  }, 25000);
-  heartbeat.unref();
-
   return {
     server,
     state,
@@ -481,13 +384,6 @@ export function createProxy({
       onChange();
       return state.enabled;
     },
-    /** сообщить открытым страницам, что файлы изменились */
-    notifyFilesChanged: (names) => {
-      if (!config.liveReload || !sse.size) return;
-      const onlyCss = names.length > 0 && names.every((n) => /\.css$/i.test(n));
-      const payload = `data: ${JSON.stringify({ type: onlyCss ? 'css' : 'reload' })}\n\n`;
-      for (const res of sse) res.write(payload);
-    },
     listen: (port, host = '127.0.0.1') =>
       new Promise((resolve, reject) => {
         const onError = (e) => reject(e);
@@ -500,11 +396,8 @@ export function createProxy({
       }),
     close: () =>
       new Promise((resolve) => {
-        clearInterval(heartbeat);
         for (const s of sockets) s.destroy();
         sockets.clear();
-        for (const res of sse) res.end();
-        sse.clear();
         inner.close();
         server.close(() => resolve());
         upstream.close();

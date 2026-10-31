@@ -32,12 +32,28 @@ async function primaryService() {
   });
   if (!global.ok) throw new Error('не удалось определить основную сетевую службу');
   const ids = [...global.stdout.matchAll(/PrimaryService\s*:\s*([A-Fa-f0-9-]+)/g)].map((match) => match[1]);
-  if (!ids.length) return '';
-  const setup = await run('scutil', [], {
-    input: [...new Set(ids)].map((uuid) => `show Setup:/Network/Service/${uuid}\n`).join('') + 'quit\n',
-  });
+  const setup = ids.length
+    ? await run('scutil', [], {
+        input: [...new Set(ids)].map((uuid) => `show Setup:/Network/Service/${uuid}\n`).join('') + 'quit\n',
+      })
+    : { ok: true, stdout: '' };
   if (!setup.ok) throw new Error('не удалось прочитать основную сетевую службу');
-  return /UserDefinedName\s*:\s*([^\r\n]+)/.exec(setup.stdout)?.[1]?.trim() || '';
+  const name = /UserDefinedName\s*:\s*([^\r\n]+)/.exec(setup.stdout)?.[1]?.trim() || '';
+  if (name && !/PrimaryInterface\s*:\s*utun/.test(global.stdout)) return name;
+  // Packet Tunnel может стать primary без записи Setup. Для контроля PAC берём
+  // первую доступную физическую службу по системному порядку, отдельно проверяя VPN override.
+  const [network, order] = await Promise.all([
+    run('scutil', ['--nwi']),
+    run('networksetup', ['-listnetworkserviceorder']),
+  ]);
+  if (!network.ok || !order.ok) throw new Error('не удалось определить сетевую службу под VPN');
+  const interfaces = new Set((/Network interfaces:\s*([^\r\n]+)/.exec(network.stdout)?.[1] || '').split(/\s+/));
+  for (const match of order.stdout.matchAll(/^\(\d+\)\s+([^\r\n]+)\r?\n\(Hardware Port:.*?, Device:\s*([^)]*)\)/gm)) {
+    const device = match[2].trim();
+    if (device && !device.startsWith('utun') && interfaces.has(device) && !match[1].startsWith('*'))
+      return match[1].trim();
+  }
+  return name;
 }
 
 export async function proxyState() {

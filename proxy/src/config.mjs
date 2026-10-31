@@ -10,10 +10,6 @@ export const DEFAULT_CONFIG = {
   roots: [],
   moduleRoots: {},
   sites: [],
-  /** вышестоящий прокси ("host:port"); пусто — взять прежний системный или идти напрямую */
-  upstreamProxy: '',
-  /** перезагружать страницу при изменении файлов в папках с кодом */
-  liveReload: false,
 };
 
 export function normalizeConfig(raw) {
@@ -24,8 +20,9 @@ export function normalizeConfig(raw) {
   cfg.servicePrefixes = Array.isArray(cfg.servicePrefixes)
     ? cfg.servicePrefixes.map((p) => String(p || '').trim()).filter(Boolean)
     : [];
-  cfg.upstreamProxy = String(cfg.upstreamProxy || '').trim();
-  cfg.liveReload = cfg.liveReload === true;
+  // Удалённые настройки старых версий не попадают обратно в сохраняемый конфиг.
+  delete cfg.upstreamProxy;
+  delete cfg.liveReload;
   return cfg;
 }
 

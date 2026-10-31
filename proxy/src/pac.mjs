@@ -10,18 +10,17 @@ const q = (s) => JSON.stringify(String(s));
 /**
  * @param {object} config
  * @param {number} port порт прокси
- * @param {string} [fallback] что возвращать для остальных хостов ("PROXY h:p; DIRECT" для корпоративного прокси)
  */
-export function buildPac(config, port, fallback = 'DIRECT') {
+export function buildPac(config, port) {
   const { hostGlobs } = compile(config);
-  const ours = `PROXY 127.0.0.1:${port}; ${fallback}`;
+  const ours = `PROXY 127.0.0.1:${port}; DIRECT`;
   if (hostGlobs === null) return `function FindProxyForURL(url, host) { return ${q(ours)}; }\n`;
   const checks = hostGlobs.map((g) => `shExpMatch(host, ${q(g)})`).join(' ||\n      ');
   return [
     'function FindProxyForURL(url, host) {',
     '  host = host.toLowerCase();',
     hostGlobs.length ? `  if (${checks}) return ${q(ours)};` : '',
-    `  return ${q(fallback)};`,
+    '  return "DIRECT";',
     '}',
     '',
   ]

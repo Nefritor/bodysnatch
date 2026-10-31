@@ -36,8 +36,6 @@ export type Config = {
   roots?: (string | { path: string; enabled?: boolean })[];
   moduleRoots?: Record<string, string>;
   sites: SiteConfig[];
-  upstreamProxy?: string;
-  liveReload?: boolean;
   theme?: 'auto' | 'light' | 'dark';
   servicePrefixes?: string[];
 };
@@ -84,9 +82,6 @@ export type Snapshot = {
   pacUrl: string;
   /** хосты, которые идут через прокси; null — все */
   hosts: string[] | null;
-  /** вышестоящий прокси, если он есть */
-  upstream: string;
-  liveReload: boolean;
 };
 
 export type LogEntry = {

@@ -47,12 +47,6 @@ test('hostMatches и PAC строятся из одних и тех же мас�
   assert.match(pac, /return "DIRECT"/);
 });
 
-test('PAC: корпоративный прокси остаётся запасным маршрутом', () => {
-  const config = normalizeConfig({ sites: [maskSite()] });
-  const pac = buildPac(config, 8180, 'PROXY corp:3128; DIRECT');
-  assert.match(pac, /return "PROXY corp:3128; DIRECT"/);
-});
-
 test('шаблон без схемы заставляет перехватывать всё', () => {
   const config = normalizeConfig({ sites: [{ id: 's', enabled: true, match: ['*'] }] });
   assert.equal(compile(config).hostGlobs, null);
