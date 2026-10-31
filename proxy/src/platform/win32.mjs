@@ -4,56 +4,42 @@
  * прав администратора не требует.
  */
 import { run, thumbprintOf } from './common.mjs';
+import { fileURLToPath } from 'node:url';
 
 export const id = 'win32';
 
-const KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
 const REG = 'reg.exe';
-
-async function readSettings() {
-  const r = await run(REG, ['query', KEY]);
-  const values = {};
-  for (const line of r.stdout.split(/\r?\n/)) {
-    const m = /^\s+(\S+)\s+REG_\w+\s*(.*?)\s*$/.exec(line);
-    if (m) values[m[1]] = m[2];
-  }
-  return values;
-}
+const SCRIPT = fileURLToPath(new URL('./wininet.ps1', import.meta.url)).replace(
+  /app\.asar([\\/])/,
+  'app.asar.unpacked$1',
+);
+const wininet = async (action, args = []) => {
+  const r = await run(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-Action', action, ...args],
+    { timeout: 15000 },
+  );
+  if (!r.ok) throw new Error('WinINET: ' + r.stderr.trim());
+  return JSON.parse(r.stdout.trim());
+};
 
 /** Что сейчас настроено в системе. */
 export async function proxyState() {
-  const v = await readSettings();
-  const enable = String(v.ProxyEnable || '0');
-  const n = enable.startsWith('0x') ? Number.parseInt(enable, 16) : Number.parseInt(enable, 10);
-  return { pacUrl: v.AutoConfigURL || '', manual: { enabled: n === 1, server: v.ProxyServer || '' } };
+  return wininet('Read');
 }
-
-/** Сообщить WinINET, что настройки изменились (браузеры подхватывают сразу). */
-async function notifyChanged() {
-  const script =
-    '$s=\'[DllImport("wininet.dll")] public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);\';' +
-    '$t=Add-Type -MemberDefinition $s -Name W -Namespace BS -PassThru;' +
-    '$t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0)|Out-Null;' +
-    '$t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)|Out-Null';
-  await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 15000 });
-}
-
-const writePac = (url) => run(REG, ['add', KEY, '/v', 'AutoConfigURL', '/t', 'REG_SZ', '/d', url, '/f']);
 
 export async function setPac(url) {
-  const r = await writePac(url);
-  if (!r.ok) throw new Error('не удалось записать настройки прокси: ' + r.stderr.trim());
-  void notifyChanged();
+  await wininet('Set', ['-PacUrl', url]);
 }
 
 /** Вернуть то, что было до нас (снимок из proxyState). */
 export async function restoreProxy(prev) {
-  const r =
-    prev && prev.pacUrl ? await writePac(prev.pacUrl) : await run(REG, ['delete', KEY, '/v', 'AutoConfigURL', '/f']);
-  // «значения нет» при удалении — не ошибка: прокси и так выключен
-  const absent = /unable to find|не удается найти|не найден/i.test(r.stderr);
-  if (!r.ok && !absent) throw new Error('не удалось вернуть настройки прокси: ' + r.stderr.trim());
-  void notifyChanged();
+  await wininet('Restore', [
+    '-PacUrl',
+    prev?.autoConfigUrl || prev?.pacUrl || '',
+    '-AutoEnabled',
+    prev?.pacUrl ? '1' : '0',
+  ]);
 }
 
 export async function openProxySettings() {

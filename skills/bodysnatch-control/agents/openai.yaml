@@ -1,0 +1,4 @@
+interface:
+  display_name: 'BodySnatch Control'
+  short_description: '���������� BodySnatch ����� ��������� API ��� ����'
+  default_prompt: '�������� BodySnatch ����� ��������� API � ������� ��������� �������.'

@@ -84,6 +84,10 @@ export async function ensureCA(dir, { protector = null, domains = null } = {}) {
 
   const readKey = async () => {
     if (protector && fs.existsSync(encPath)) return protector.decrypt(fs.readFileSync(encPath));
+    if (!protector && fs.existsSync(encPath) && !fs.existsSync(keyPath))
+      throw new Error(
+        'ключ CA зашифрован средствами ОС: запустите Electron с этим профилем или выберите отдельную папку сертификатов',
+      );
     if (fs.existsSync(keyPath)) {
       const pem = fs.readFileSync(keyPath, 'utf8');
       // старый открытый ключ переводим в защищённый вид

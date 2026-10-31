@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import type { RootInfo, ModuleInfo } from '../types.js';
-import { norm, plural } from '../lib/format.js';
+import { plural } from '../lib/format.js';
 import { Button } from '../ui/Button.js';
 import { Panel, PanelHead, PanelTitle } from '../ui/Panel.js';
 import { IconPencil, IconPlus } from './icons.js';
@@ -18,24 +18,18 @@ export type RootsPanelProps = {
 
 export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
   const [busy, setBusy] = useState(false);
-
-  /** конфиг хранит папки объектами {path, enabled} (или строками) — приводим к путям */
-  const toPaths = (cfg: { roots?: unknown } | null) =>
-    (((cfg?.roots ?? []) as unknown[]) || [])
-      .map((r) => (typeof r === 'string' ? r : ((r as { path?: string })?.path ?? '')))
-      .filter(Boolean) as string[];
+  const [error, setError] = useState('');
 
   const add = async () => {
     setBusy(true);
+    setError('');
     try {
       const picked = await api.pickFolder('Выберите папку с модулями');
       if (!picked.ok || !picked.path) return;
-      const st = await api.state();
-      const cfg = st.config ?? { sites: [] };
-      const paths = toPaths(cfg);
-      if (!paths.some((p) => norm(p) === norm(picked.path as string))) paths.push(picked.path as string);
-      await api.saveConfig({ ...cfg, roots: paths });
+      await api.roots('add', picked.path);
       onChanged();
+    } catch (e) {
+      setError(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
@@ -44,25 +38,30 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
   /** Перевыбрать путь: новый выбор заменяет старый в том же месте списка. */
   const replace = async (target: string) => {
     setBusy(true);
+    setError('');
     try {
       const picked = await api.pickFolder('Выберите папку с модулями');
       if (!picked.ok || !picked.path) return;
-      const st = await api.state();
-      const cfg = st.config ?? { sites: [] };
-      const paths = toPaths(cfg).map((p) => (norm(p) === norm(target) ? (picked.path as string) : p));
-      await api.saveConfig({ ...cfg, roots: paths });
+      await api.roots('replace', target, picked.path);
       onChanged();
+    } catch (e) {
+      setError(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async (target: string) => {
-    const st = await api.state();
-    const cfg = st.config ?? { sites: [] };
-    const paths = toPaths(cfg).filter((p) => norm(p) !== norm(target));
-    await api.saveConfig({ ...cfg, roots: paths });
-    onChanged();
+    setBusy(true);
+    setError('');
+    try {
+      await api.roots('remove', target);
+      onChanged();
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const open = async (target: string) => {
@@ -71,6 +70,11 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
 
   return (
     <Panel>
+      {error ? (
+        <p className="text-xs text-warn" role="alert">
+          {error}
+        </p>
+      ) : null}
       <PanelHead>
         <PanelTitle>
           <div className="flex gap-2 w-full justify-between">
@@ -114,7 +118,13 @@ export const RootsPanel = ({ roots, modules, onChanged }: RootsPanelProps) => {
                 <Button size="sm" onClick={() => void open(r.path)}>
                   открыть
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => void remove(r.path)} title="убрать папку">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={busy}
+                  onClick={() => void remove(r.path)}
+                  title="убрать папку"
+                >
                   убрать
                 </Button>
               </div>

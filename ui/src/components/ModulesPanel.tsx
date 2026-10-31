@@ -21,6 +21,7 @@ export type ModulesPanelProps = {
 export const ModulesPanel = ({ modules, roots, onChanged }: ModulesPanelProps) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [error, setError] = useState('');
   const selectedCount = modules.filter((m) => m.selected).length;
 
   const byRoot = useMemo(() => {
@@ -35,8 +36,13 @@ export const ModulesPanel = ({ modules, roots, onChanged }: ModulesPanelProps) =
   }, [modules, roots, query]);
 
   const pick = async (moduleName: string, rootPath: string | null) => {
-    await api.moduleRoot(moduleName, rootPath);
-    onChanged();
+    setError('');
+    try {
+      await api.moduleRoot(moduleName, rootPath);
+      onChanged();
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    }
   };
 
   useEffect(() => {
@@ -70,6 +76,11 @@ export const ModulesPanel = ({ modules, roots, onChanged }: ModulesPanelProps) =
 
   return (
     <PanelHead>
+      {error ? (
+        <p className="text-xs text-warn" role="alert">
+          {error}
+        </p>
+      ) : null}
       {modules.length === 0 ? null : (
         <Button size="sm" onClick={() => setModalOpen(true)}>
           Модули
@@ -88,6 +99,11 @@ export const ModulesPanel = ({ modules, roots, onChanged }: ModulesPanelProps) =
             <Input autoFocus placeholder="поиск модуля…" value={query} onChange={(e) => setQuery(e.target.value)} />
           }
         >
+          {error ? (
+            <p className="text-xs text-warn" role="alert">
+              {error}
+            </p>
+          ) : null}
           {byRoot.map(({ root, list }) => (
             <div key={root.path} className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">

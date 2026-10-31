@@ -4,7 +4,7 @@
  *
  * Движок (прокси, PAC, сертификат) работает в отдельном процессе (shell/engine-worker.cjs).
  * Интерфейс грузится по протоколу app://, а его вызовы API идут движку через IPC —
- * без сетевого порта, поэтому до API не дотянется ни одна веб-страница.
+ * Управляющий API для локальных агентов отдельно защищён Bearer-токеном.
  */
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage, screen, protocol } = require('electron');
 const path = require('node:path');
@@ -91,6 +91,7 @@ let quitting = false;
 // ── движок в отдельном процессе ──────────────────────────────────────────────
 /** Корневой CA прошлых версий лежал в %LOCALAPPDATA%: берём его, чтобы не потерять установленное доверие. */
 function migrateLegacyCA(certsDir) {
+  if (process.env.BODYSNATCH_DATA_DIR) return;
   const legacy = path.join(process.env.LOCALAPPDATA || '', 'BodySnatch', 'certs');
   try {
     if (!process.env.LOCALAPPDATA || fs.existsSync(path.join(certsDir, 'rootCA.pem'))) return;
@@ -110,6 +111,17 @@ async function startEngine() {
   host = createEngineHost({
     log,
     getWindow: () => win,
+    onUpdate: async (action) => {
+      if (action === 'check') await updater.check();
+      else if (action === 'download') void updater.download();
+      else if (action === 'install') await updater.install();
+      return updater.state();
+    },
+    onWindow: (action) => {
+      if (action === 'show') showWindow();
+      else if (action === 'hide') hideToTray();
+      else if (action === 'minimize') win?.minimize();
+    },
     onQuit: () => void quitApp(),
     // системные настройки вернёт следующий запуск; PAC без живого прокси даёт DIRECT
     onCrash: () => {
@@ -120,7 +132,8 @@ async function startEngine() {
   });
   const info = await host.start(
     {
-      configPath: !app.isPackaged && fs.existsSync(dev) ? dev : path.join(DATA, 'rules.json'),
+      configPath:
+        !process.env.BODYSNATCH_DATA_DIR && !app.isPackaged && fs.existsSync(dev) ? dev : path.join(DATA, 'rules.json'),
       defaultConfigPath: path.join(ROOT, 'config', 'rules.default.json'),
       stateDir: DATA,
       certsDir: path.join(DATA, 'certs'),
@@ -176,6 +189,11 @@ function registerAppProtocol() {
           controller.enqueue(encoder.encode(': ok\n\n'));
           unsubscribe = host.subscribe((m) => {
             try {
+              if (controller.desiredSize < -500) {
+                unsubscribe();
+                controller.close();
+                return;
+              }
               controller.enqueue(encoder.encode(`event: ${m.event}\ndata: ${JSON.stringify(m.data)}\n\n`));
             } catch {
               /* читатель закрыт */
@@ -279,7 +297,9 @@ function createWindow() {
   });
   // интерфейс не уходит со своей страницы; внешние ссылки открываются в браузере
   win.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('app://') && !(UI_OVERRIDE && url.startsWith(UI_OVERRIDE))) event.preventDefault();
+    const allowed = new URL(UI_OVERRIDE || 'app://bodysnatch/index.html');
+    const target = new URL(url);
+    if (target.protocol !== allowed.protocol || target.host !== allowed.host) event.preventDefault();
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
@@ -329,6 +349,7 @@ function ensureTray() {
 async function quitApp() {
   if (quitting) return;
   quitting = true;
+  updater.stop();
   try {
     // движок сам возвращает системные настройки; ждём, но не бесконечно
     if (host) await host.stop();
@@ -372,7 +393,7 @@ ipcMain.handle('bs-update', (event, action) => {
   if (!win || event.sender !== win.webContents) return null;
   if (action === 'check') return updater.check().then(() => updater.state());
   if (action === 'download') void updater.download();
-  if (action === 'install') updater.install();
+  if (action === 'install') return updater.install().then(() => updater.state());
   return updater.state();
 });
 

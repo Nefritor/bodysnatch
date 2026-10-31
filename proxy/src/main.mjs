@@ -5,6 +5,7 @@
  *   node proxy/src/main.mjs [--config rules.json] [--port 8180] [--api-port 8181] [--ui-origin http://localhost:5179]
  */
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEngine } from './engine.mjs';
@@ -18,11 +19,12 @@ const arg = (name, def) => {
 };
 
 const dataDir =
-  process.platform === 'win32'
+  process.env.BODYSNATCH_DATA_DIR ||
+  (process.platform === 'win32'
     ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'BodySnatch')
     : process.platform === 'darwin'
       ? path.join(os.homedir(), 'Library', 'Application Support', 'BodySnatch')
-      : path.join(os.homedir(), '.config', 'BodySnatch');
+      : path.join(os.homedir(), '.config', 'BodySnatch'));
 
 const engine = await createEngine({
   configPath: path.resolve(arg('config', path.join(dataDir, 'rules.json'))),
@@ -30,6 +32,7 @@ const engine = await createEngine({
   stateDir: path.resolve(arg('state', dataDir)),
   certsDir: path.resolve(arg('certs', path.join(dataDir, 'certs'))),
   distDir: path.join(ROOT, 'ui', 'dist'),
+  version: JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version,
   port: Number(arg('port', '0')) || 0,
   log: (line) => console.log('[bodysnatch]', line),
 });

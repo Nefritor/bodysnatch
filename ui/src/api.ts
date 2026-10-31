@@ -12,7 +12,9 @@ async function post<T>(url: string, body?: unknown, timeoutMs = 30000): Promise<
       cache: 'no-store',
       signal: ac.signal,
     });
-    return (await res.json()) as T;
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+    return result as T;
   } finally {
     window.clearTimeout(timer);
   }
@@ -22,15 +24,20 @@ type Shell = { platform: string; send: (msg: Record<string, unknown>) => void };
 const shell = (): Shell | undefined => (window as unknown as { bs?: Shell }).bs;
 
 export const api = {
-  state: () =>
-    fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(8000) }).then(
-      (r) => r.json() as Promise<Snapshot>,
-    ),
+  state: async () => {
+    const res = await fetch('/api/state', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    const result = await res.json();
+    if (!res.ok || !result.ok) throw new Error(result.error || 'не удалось получить состояние');
+    return result as Snapshot;
+  },
   log: (n = 200) =>
     fetch(`/api/log?n=${n}`, { cache: 'no-store' }).then((r) => r.json() as Promise<{ ok: boolean; log: LogEntry[] }>),
   clearLog: () => post<{ ok: boolean }>('/api/log/clear', {}),
   setEnabled: (enabled: boolean) => post<{ ok: boolean; enabled: boolean }>('/api/enabled', { enabled }),
   saveConfig: (config: unknown) => post<{ ok: boolean }>('/api/config', { config }),
+  saveSite: (index: number, patch: unknown) => post<{ ok: boolean }>('/api/site', { index, patch }),
+  roots: (action: 'add' | 'remove' | 'replace', path: string, replacement?: string) =>
+    post<{ ok: boolean }>('/api/roots', { action, path, replacement }),
   moduleRoot: (module: string, root: string | null) => post<{ ok: boolean }>('/api/module-root', { module, root }),
   pickFolder: (title?: string) => post<{ ok: boolean; path?: string; message?: string }>('/api/pick-folder', { title }),
   open: (what: string, extra: Record<string, unknown> = {}) =>
@@ -63,21 +70,34 @@ export function useBodysnatch() {
   const [error, setError] = useState('');
   const [log, setLog] = useState<LogEntry[]>([]);
   const busy = useRef(false);
+  const refreshAgain = useRef(false);
+  const mounted = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (busy.current) return;
+    if (busy.current) {
+      refreshAgain.current = true;
+      return;
+    }
     busy.current = true;
     try {
-      setState(await api.state());
-      setError('');
+      const snapshot = await api.state();
+      if (mounted.current) {
+        setState(snapshot);
+        setError('');
+      }
     } catch (e) {
-      setError(String((e as Error)?.message || e));
+      if (mounted.current) setError(String((e as Error)?.message || e));
     } finally {
       busy.current = false;
+      if (refreshAgain.current && mounted.current) {
+        refreshAgain.current = false;
+        void refresh();
+      }
     }
   }, []);
 
   useEffect(() => {
+    mounted.current = true;
     void refresh();
     void api
       .log(LOG_CAP)
@@ -86,6 +106,14 @@ export function useBodysnatch() {
 
     const source = new EventSource('/api/events');
     source.addEventListener('state', () => void refresh());
+    source.addEventListener('log-clear', () => setLog([]));
+    source.addEventListener('open', () => {
+      void refresh();
+      void api
+        .log(LOG_CAP)
+        .then((r) => r?.log && setLog(r.log))
+        .catch(() => undefined);
+    });
     source.addEventListener('log', (ev) => {
       try {
         const entry = JSON.parse((ev as MessageEvent).data) as LogEntry;
@@ -94,10 +122,19 @@ export function useBodysnatch() {
         /* битое событие */
       }
     });
-    const safety = window.setInterval(() => void refresh(), 10000);
+    const onVisible = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const safety = window.setInterval(onVisible, 10000);
     return () => {
+      mounted.current = false;
+      refreshAgain.current = false;
       source.close();
       window.clearInterval(safety);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   }, [refresh]);
 

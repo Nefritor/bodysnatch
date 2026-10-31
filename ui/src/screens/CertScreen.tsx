@@ -91,9 +91,9 @@ export const CertScreen = ({ snap, busy, onNext, onRefresh }: CertScreenProps) =
         </p>
       ) : null}
 
-      {fail && !trusted ? (
+      {fail && (!trusted || phase === 'error') ? (
         <div className="lg-soft flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft" role="status">
-          <span className="text-warn">Не удалось установить{fail.error ? `: ${fail.error}` : ''}.</span>
+          <span className="text-warn">Не удалось выполнить операцию{fail.error ? `: ${fail.error}` : ''}.</span>
           {fail.manual ? (
             <>
               <span>Можно выполнить в терминале вручную (потребуется пароль), затем нажать «Далее»:</span>
@@ -135,7 +135,11 @@ export const CertScreen = ({ snap, busy, onNext, onRefresh }: CertScreenProps) =
             onClick={() =>
               window.confirm(
                 'Сертификат будет удалён, приложение закроется. При следующем запуске создастся новый, ограниченный доменами из масок, и его нужно будет установить.',
-              ) && void api.certReset()
+              ) &&
+              void api.certReset().catch((e: Error) => {
+                setFail({ error: e.message });
+                setPhase('error');
+              })
             }
           >
             {snap.cert.constraints.uncovered.length || snap.cert.constraints.canTighten

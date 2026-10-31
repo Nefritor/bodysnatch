@@ -38,6 +38,8 @@ export type Config = {
   sites: SiteConfig[];
   upstreamProxy?: string;
   liveReload?: boolean;
+  theme?: 'auto' | 'light' | 'dark';
+  servicePrefixes?: string[];
 };
 
 export type SystemProxy = {
@@ -65,6 +67,7 @@ export type Snapshot = {
   version: string;
   enabled: boolean;
   configPath: string;
+  routeMode: 'off' | 'system' | 'browser';
   config?: Config;
   sites: SiteConfig[];
   roots: RootInfo[];

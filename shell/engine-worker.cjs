@@ -48,6 +48,8 @@ async function init(opts) {
       pickFolder: (title) => rpc('pickFolder', title),
       openPath: (target) => rpc('openPath', target),
       quit: () => parent.postMessage({ t: 'quit' }),
+      update: (action) => rpc('update', action),
+      window: (action) => rpc('window', action),
     },
   });
   const port = await engine.start();

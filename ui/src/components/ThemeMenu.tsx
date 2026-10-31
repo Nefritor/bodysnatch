@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { applyTheme, loadTheme, nextTheme, switchTheme, type ThemeMode } from '../theme.js';
 import { cn } from '../ui/cn.js';
+import { api } from '../api.js';
 
 const MODES: { mode: ThemeMode; label: string }[] = [
   { mode: 'auto', label: 'Авто' },
@@ -44,8 +45,13 @@ const icon = (mode: ThemeMode) => {
   );
 };
 
-export const ThemeMenu = () => {
+export const ThemeMenu = ({ savedMode, onChanged }: { savedMode?: ThemeMode; onChanged?: () => void }) => {
   const [mode, setMode] = useState<ThemeMode>(() => loadTheme());
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (savedMode && savedMode !== mode) switchTheme(savedMode, () => setMode(savedMode));
+  }, [savedMode]);
 
   useEffect(() => {
     applyTheme(mode);
@@ -62,11 +68,24 @@ export const ThemeMenu = () => {
     <button
       type="button"
       aria-label="Тема оформления"
-      title={`Тема: ${current}`}
-      onClick={() => {
-        const next = nextTheme(mode);
-        switchTheme(next, () => flushSync(() => setMode(next)));
-      }}
+      title={error || `Тема: ${current}`}
+      disabled={busy}
+      onClick={() =>
+        void (async () => {
+          const next = nextTheme(mode);
+          setBusy(true);
+          setError('');
+          try {
+            await api.saveConfig({ theme: next });
+            switchTheme(next, () => flushSync(() => setMode(next)));
+            onChanged?.();
+          } catch (e) {
+            setError(String((e as Error).message || e));
+          } finally {
+            setBusy(false);
+          }
+        })()
+      }
       className={cn(
         'mr-1 inline-grid h-7 items-center rounded-pill border border-transparent px-2.5 text-xs font-medium',
         'text-ink-soft transition-[background-color,border-color,box-shadow,color] duration-200 hover:text-ink',

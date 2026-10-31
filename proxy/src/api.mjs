@@ -1,13 +1,15 @@
 /**
  * API интерфейса. Не привязано к HTTP: `api.handle()` принимает метод, путь и тело,
  * а оболочка (Electron-протокол app:// или отладочный HTTP-сервер) только доставляет вызовы.
- * Наружу, на порт прокси, API не выставляется.
+ * На порту прокси API не выставляется. Отдельный control.mjs публикует его на loopback с токеном.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { buildRoots, buildModules, firstSite } from './scan.mjs';
-import { touchConfig } from './rules.mjs';
+import { touchConfig, pickSite, resolveLocal } from './rules.mjs';
+import { normalizeConfig, saveConfig } from './config.mjs';
+import { parseProxy } from './upstream.mjs';
 
 const ok = (json = {}) => ({ status: 200, json: { ok: true, ...json } });
 const fail = (message, status = 200, extra = {}) => ({
@@ -35,6 +37,100 @@ export const hostnameOf = (host) =>
 
 export function makeApi(engine) {
   const { config, proxy, ca, platform } = engine;
+  let writes = Promise.resolve();
+  const publicConfig = () => Object.fromEntries(Object.entries(config).filter(([key]) => !key.startsWith('__')));
+  const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const safeModule = (name) =>
+    typeof name === 'string' &&
+    !!name &&
+    !/[\\/\0]/.test(name) &&
+    !['.', '..', '__proto__', 'constructor', 'prototype'].includes(name);
+  const optionList = (list) =>
+    Array.isArray(list) &&
+    list.every((v) => object(v) && typeof v.value === 'string' && typeof v.enabled === 'boolean');
+
+  function validateConfig(src) {
+    if (!object(src)) return 'ожидается объект config';
+    for (const key of Object.keys(src)) {
+      if (!['sites', 'roots', 'moduleRoots', 'servicePrefixes', 'upstreamProxy', 'liveReload', 'theme'].includes(key))
+        return 'неизвестная или неизменяемая настройка: ' + key;
+    }
+    if (
+      'roots' in src &&
+      (!Array.isArray(src.roots) ||
+        !src.roots.every((r) =>
+          typeof r === 'string'
+            ? path.isAbsolute(r)
+            : object(r) &&
+              typeof (r.path || r.abs) === 'string' &&
+              path.isAbsolute(r.path || r.abs) &&
+              (r.enabled === undefined || typeof r.enabled === 'boolean'),
+        ))
+    )
+      return 'roots: ожидаются абсолютные пути или объекты {path, enabled}';
+    if (
+      'moduleRoots' in src &&
+      (!object(src.moduleRoots) ||
+        !Object.entries(src.moduleRoots).every(
+          ([name, root]) => safeModule(name) && typeof root === 'string' && path.isAbsolute(root),
+        ))
+    )
+      return 'moduleRoots: ожидаются имена модулей и абсолютные пути';
+    if (
+      'servicePrefixes' in src &&
+      (!Array.isArray(src.servicePrefixes) || !src.servicePrefixes.every((v) => typeof v === 'string'))
+    )
+      return 'servicePrefixes: ожидается массив строк';
+    if ('liveReload' in src && typeof src.liveReload !== 'boolean') return 'liveReload: ожидается boolean';
+    if ('theme' in src && !['auto', 'light', 'dark'].includes(src.theme)) return 'theme: auto, light или dark';
+    if (
+      'upstreamProxy' in src &&
+      (typeof src.upstreamProxy !== 'string' || (src.upstreamProxy.trim() && !parseProxy(src.upstreamProxy)))
+    )
+      return 'upstreamProxy: ожидается host:port или пустая строка';
+    if ('sites' in src) {
+      if (!Array.isArray(src.sites)) return 'sites: ожидается массив';
+      for (const site of src.sites) {
+        if (!object(site)) return 'sites: ожидаются объекты сайтов';
+        if (['enabled', 'useLocal'].some((key) => key in site && typeof site[key] !== 'boolean'))
+          return 'sites: enabled/useLocal должны быть boolean';
+        if (
+          'match' in site &&
+          !(
+            typeof site.match === 'string' ||
+            (Array.isArray(site.match) && site.match.every((s) => typeof s === 'string'))
+          )
+        )
+          return 'sites.match: ожидаются строки';
+        if ('patterns' in site && (!Array.isArray(site.patterns) || !site.patterns.every((s) => typeof s === 'string')))
+          return 'sites.patterns: ожидаются строки';
+        if ('files' in site && !optionList(site.files)) return 'sites.files: ожидается массив {value, enabled}';
+        if (
+          'mask' in site &&
+          (!object(site.mask) || !['prefixes', 'envs', 'hosts'].every((key) => optionList(site.mask[key])))
+        )
+          return 'sites.mask: ожидаются prefixes, envs, hosts';
+      }
+    }
+    return '';
+  }
+
+  async function commitConfig(patch) {
+    const error = validateConfig(patch);
+    if (error) return fail(error, 400);
+    const next = normalizeConfig({ ...publicConfig(), ...patch });
+    next.__path = config.__path;
+    // При ошибке записи действующий конфиг остаётся целым и в памяти, и на диске.
+    saveConfig(next);
+    Object.assign(config, Object.fromEntries(Object.entries(next).filter(([key]) => !key.startsWith('__'))));
+    touchConfig(config);
+    try {
+      await engine.configChanged();
+    } catch (error) {
+      return fail('правила сохранены, но системный PAC не обновлён: ' + error.message, 500, { configSaved: true });
+    }
+    return ok();
+  }
 
   /** Статика собранного интерфейса (режим без Electron). */
   function serveStatic(pathname) {
@@ -66,24 +162,18 @@ export function makeApi(engine) {
   }
 
   async function state() {
-    const [sys, trusted] = await Promise.all([engine.systemState(), engine.certTrusted()]);
+    const [sys, trusted] = await Promise.all([engine.reconcileProxy(), engine.certTrusted()]);
     const roots = buildRoots(config);
     const site = firstSite(config);
-    const ours = engine.isOurPac(sys.pacUrl);
+    const ours = engine.ownsSystemPac(sys);
     return {
       ok: true,
       version: engine.version,
       platform: platform.id,
       enabled: proxy.state.enabled,
+      routeMode: engine.routeMode,
       configPath: config.__path,
-      config: {
-        sites: config.sites,
-        roots: config.roots,
-        moduleRoots: config.moduleRoots,
-        servicePrefixes: config.servicePrefixes,
-        upstreamProxy: config.upstreamProxy,
-        liveReload: config.liveReload,
-      },
+      config: publicConfig(),
       sites: config.sites,
       roots,
       modules: buildModules(config, roots),
@@ -140,42 +230,122 @@ export function makeApi(engine) {
       case 'GET /api/state':
         return { status: 200, json: await state() };
 
+      case 'GET /api/capabilities':
+        return ok({
+          apiVersion: 1,
+          transport: 'loopback-bearer',
+          desktop: {
+            window: !!engine.hooks.window,
+            updates: !!engine.hooks.update,
+            folderPicker: !!engine.hooks.pickFolder,
+          },
+          routes: {
+            GET: ['state', 'config', 'capabilities', 'log?n=200', 'events', 'resolve?url=URL', 'cert/file', 'update'],
+            POST: [
+              'enabled',
+              'config',
+              'site',
+              'roots',
+              'module-root',
+              'log/clear',
+              'proxy/on',
+              'proxy/off',
+              'browser/open',
+              'cert/install',
+              'cert/uninstall',
+              'cert/reset',
+              'open',
+              'open-settings',
+              'pick-folder',
+              'window',
+              'update/check',
+              'update/download',
+              'update/install',
+              'quit',
+            ],
+          },
+        });
+
       case 'GET /api/log':
-        return ok({ log: proxy.logs.slice(0, Math.min(Number(url.searchParams.get('n')) || 200, 500)) });
+        return ok({
+          log: proxy.logs.slice(0, Math.max(0, Math.min(Number(url.searchParams.get('n') ?? 200) || 0, 500))),
+        });
 
       case 'POST /api/log/clear':
         proxy.clearLog();
+        engine.events.emit('log-clear');
         return ok();
 
       case 'POST /api/enabled':
-        return ok({ enabled: proxy.setEnabled(!!body.enabled) });
+        if (typeof body.enabled !== 'boolean') return fail('enabled: ожидается boolean', 400);
+        return ok({ enabled: await engine.setEnabled(body.enabled) });
 
       case 'GET /api/config':
-        return ok({ config: { sites: config.sites, roots: config.roots, moduleRoots: config.moduleRoots } });
+        return ok({ config: publicConfig() });
 
       case 'POST /api/config': {
-        const src = body && body.config && typeof body.config === 'object' ? body.config : body;
-        if (Array.isArray(src.sites)) config.sites = src.sites;
-        if (Array.isArray(src.roots)) config.roots = src.roots;
-        if (src.moduleRoots && typeof src.moduleRoots === 'object') config.moduleRoots = src.moduleRoots;
-        if (Array.isArray(src.servicePrefixes)) config.servicePrefixes = src.servicePrefixes;
-        if (typeof src.upstreamProxy === 'string') config.upstreamProxy = src.upstreamProxy.trim();
-        if (typeof src.liveReload === 'boolean') config.liveReload = src.liveReload;
-        touchConfig(config);
-        engine.saveConfig();
-        await engine.configChanged();
-        return ok();
+        return commitConfig(Object.hasOwn(body, 'config') ? body.config : body);
+      }
+
+      case 'POST /api/site': {
+        const index = body.id !== undefined ? config.sites.findIndex((s) => s.id === body.id) : (body.index ?? 0);
+        if (!Number.isInteger(index) || index < 0 || index >= config.sites.length || !object(body.patch))
+          return fail('неизвестный сайт или некорректный patch', 400);
+        const sites = config.sites.map((site, i) => (i === index ? { ...site, ...body.patch } : site));
+        return commitConfig({ sites });
+      }
+
+      case 'POST /api/roots': {
+        const pathOf = (r) => (typeof r === 'string' ? r : r.path || r.abs);
+        const same = (a, b) =>
+          platform.id === 'win32'
+            ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
+            : path.resolve(a) === path.resolve(b);
+        let roots = [...config.roots];
+        const moduleRoots = { ...config.moduleRoots };
+        if (
+          !['add', 'remove', 'replace'].includes(body.action) ||
+          typeof body.path !== 'string' ||
+          !path.isAbsolute(body.path)
+        )
+          return fail('ожидаются action и абсолютный path', 400);
+        if (body.action === 'add') {
+          if (!roots.some((r) => same(pathOf(r), body.path))) roots.push(body.path);
+        } else {
+          if (!roots.some((r) => same(pathOf(r), body.path))) return fail('папка не найдена', 404);
+          if (body.action === 'replace' && (typeof body.replacement !== 'string' || !path.isAbsolute(body.replacement)))
+            return fail('replacement: ожидается абсолютный путь', 400);
+          if (
+            body.action === 'replace' &&
+            roots.some((r) => !same(pathOf(r), body.path) && same(pathOf(r), body.replacement))
+          )
+            return fail('такая папка уже добавлена', 409);
+          roots = roots.flatMap((r) =>
+            !same(pathOf(r), body.path)
+              ? [r]
+              : body.action === 'remove'
+                ? []
+                : [typeof r === 'string' ? body.replacement : { ...r, abs: undefined, path: body.replacement }],
+          );
+          for (const [name, root] of Object.entries(moduleRoots)) {
+            if (!same(root, body.path)) continue;
+            if (body.action === 'remove') delete moduleRoots[name];
+            else moduleRoots[name] = body.replacement;
+          }
+        }
+        return commitConfig({ roots, moduleRoots });
       }
 
       case 'POST /api/module-root': {
         const module = String(body.module || '');
-        if (!module) return fail('не указан модуль', 400);
-        if (body.root) config.moduleRoots[module] = String(body.root);
-        else delete config.moduleRoots[module];
-        touchConfig(config);
-        engine.saveConfig();
-        engine.events.emit('state');
-        return ok();
+        if (!safeModule(module)) return fail('некорректное имя модуля', 400);
+        const moduleRoots = { ...config.moduleRoots };
+        if (body.root) {
+          if (typeof body.root !== 'string' || !engine.rootPaths().includes(body.root))
+            return fail('root должен быть включённой папкой из roots', 400);
+          moduleRoots[module] = body.root;
+        } else delete moduleRoots[module];
+        return commitConfig({ moduleRoots });
       }
 
       case 'POST /api/pick-folder': {
@@ -211,6 +381,7 @@ export function makeApi(engine) {
       }
 
       case 'POST /api/cert/uninstall': {
+        await engine.setEnabled(false);
         const r = await platform.certUninstall({ pem: ca.certPem, file: ca.certPath });
         engine.invalidateTrust();
         engine.events.emit('state');
@@ -219,7 +390,7 @@ export function makeApi(engine) {
 
       case 'POST /api/cert/reset': {
         // сертификат и ключ удаляются; новый корень появится при следующем запуске
-        await engine.disableSystemProxy().catch(() => {});
+        await engine.setEnabled(false);
         await engine.resetCA();
         setTimeout(() => (engine.hooks.quit ? engine.hooks.quit() : process.exit(0)), 300);
         return ok({ restart: true });
@@ -237,7 +408,7 @@ export function makeApi(engine) {
 
       case 'POST /api/proxy/on':
         try {
-          await engine.enableSystemProxy();
+          await engine.setEnabled(true);
           return ok({ systemProxy: (await state()).systemProxy });
         } catch (e) {
           return fail(String((e && e.message) || e), 200, { manual: true, address: engine.pacUrl() });
@@ -245,19 +416,60 @@ export function makeApi(engine) {
 
       case 'POST /api/browser/open': {
         // в браузере без подмены открывать нечего: включаем её вместе с запуском
-        proxy.setEnabled(true);
-        const r = engine.openBrowser();
+        const r = await engine.launchBrowser();
         engine.events.emit('state');
         return r.ok ? ok({ browser: r.browser }) : fail(r.error);
       }
 
       case 'POST /api/proxy/off':
         try {
-          await engine.disableSystemProxy();
+          await engine.setEnabled(false);
           return ok({ systemProxy: (await state()).systemProxy });
         } catch (e) {
           return fail(String((e && e.message) || e));
         }
+
+      case 'GET /api/resolve': {
+        let target;
+        try {
+          target = new URL(url.searchParams.get('url'));
+        } catch {
+          return fail('некорректный URL', 400);
+        }
+        if (!['http:', 'https:'].includes(target.protocol)) return fail('ожидается HTTP(S) URL', 400);
+        const site = pickSite(config, target.href);
+        return ok({
+          enabled: proxy.state.enabled,
+          site: site?.id ?? null,
+          result: site
+            ? resolveLocal(config, site, target, engine.files)
+            : { passthrough: true, reason: 'сайт не выбран' },
+        });
+      }
+
+      case 'GET /api/update':
+      case 'POST /api/update/check':
+      case 'POST /api/update/download':
+      case 'POST /api/update/install': {
+        if (!engine.hooks.update) return fail('обновления доступны только в Electron', 501);
+        const action = method === 'GET' ? 'state' : route.split('/').at(-1);
+        if (action === 'install' || action === 'download') {
+          const before = await engine.hooks.update('state');
+          if (action === 'install' && before.status !== 'ready')
+            return fail('установщик ещё не готов', 409, { update: before });
+          if (action === 'download' && !['available', 'error'].includes(before.status))
+            return fail('нет доступной загрузки', 409, { update: before });
+        }
+        const update = await engine.hooks.update(action);
+        if (action === 'install' && update.status === 'error') return fail(update.error, 409, { update });
+        return ok({ update });
+      }
+
+      case 'POST /api/window':
+        if (!['show', 'hide', 'minimize'].includes(body.action)) return fail('action: show, hide, minimize', 400);
+        if (!engine.hooks.window) return fail('окно доступно только в Electron', 501);
+        await engine.hooks.window(body.action);
+        return ok();
 
       case 'GET /api/events':
         return {
@@ -266,13 +478,16 @@ export function makeApi(engine) {
             const onLog = (entry) => send('log', entry);
             const onState = () => send('state', {});
             const onFiles = (names) => send('files', names);
+            const onClear = () => send('log-clear', {});
             engine.events.on('log', onLog);
             engine.events.on('state', onState);
             engine.events.on('files', onFiles);
+            engine.events.on('log-clear', onClear);
             return () => {
               engine.events.off('log', onLog);
               engine.events.off('state', onState);
               engine.events.off('files', onFiles);
+              engine.events.off('log-clear', onClear);
             };
           },
         };
@@ -282,5 +497,15 @@ export function makeApi(engine) {
     }
   }
 
-  return { handle, serveStatic };
+  return {
+    drain: () => writes,
+    handle(method, url, body = {}) {
+      if (!object(body)) return Promise.resolve(fail('ожидается JSON-объект', 400));
+      if (String(method).toUpperCase() !== 'POST') return handle(method, url, body);
+      const result = writes.then(() => handle(method, url, body));
+      writes = result.catch(() => {});
+      return result;
+    },
+    serveStatic,
+  };
 }

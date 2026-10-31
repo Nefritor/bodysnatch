@@ -16,7 +16,7 @@ const path = require('node:path');
  * @param {() => void} o.onQuit воркер попросил завершить приложение
  * @param {(code: number | null) => void} o.onCrash воркер упал сам
  */
-function createEngineHost({ log, getWindow, onQuit, onCrash }) {
+function createEngineHost({ log, getWindow, onQuit, onCrash, onUpdate, onWindow }) {
   let worker = null;
   let seq = 0;
   const waiting = new Map();
@@ -31,12 +31,18 @@ function createEngineHost({ log, getWindow, onQuit, onCrash }) {
       return r.canceled ? '' : r.filePaths[0] || '';
     },
     openPath: (target) => shell.openPath(target),
+    update: (action) => onUpdate(action),
+    window: (action) => onWindow(action),
   };
 
   function onMessage(m) {
     switch (m.t) {
       case 'res':
-        waiting.get(m.id)?.(m.r);
+        if (waiting.has(m.id)) {
+          const pending = waiting.get(m.id);
+          clearTimeout(pending.timer);
+          pending.resolve(m.r);
+        }
         waiting.delete(m.id);
         break;
       case 'sse':
@@ -52,8 +58,8 @@ function createEngineHost({ log, getWindow, onQuit, onCrash }) {
         Promise.resolve()
           .then(() => rpcHandlers[m.name](...m.args))
           .then(
-            (value) => worker.postMessage({ t: 'rpc-res', id: m.id, value }),
-            (e) => worker.postMessage({ t: 'rpc-res', id: m.id, error: String((e && e.message) || e) }),
+            (value) => worker?.postMessage({ t: 'rpc-res', id: m.id, value }),
+            (e) => worker?.postMessage({ t: 'rpc-res', id: m.id, error: String((e && e.message) || e) }),
           );
         break;
       default:
@@ -64,16 +70,21 @@ function createEngineHost({ log, getWindow, onQuit, onCrash }) {
   /** Запрос к воркеру с ответом. */
   function ask(message, timeoutMs = 60000) {
     return new Promise((resolve, reject) => {
+      if (!worker) return reject(new Error('движок не запущен'));
       const id = ++seq;
       const timer = setTimeout(() => {
         waiting.delete(id);
         reject(new Error('движок не ответил'));
       }, timeoutMs);
-      waiting.set(id, (r) => {
+      waiting.set(id, { resolve, reject, timer });
+      try {
+        worker.postMessage({ ...message, id });
+      } catch (error) {
         clearTimeout(timer);
-        resolve(r);
-      });
-      worker.postMessage({ ...message, id });
+        waiting.delete(id);
+        reject(error);
+      }
+      return undefined;
     });
   }
 
@@ -87,17 +98,41 @@ function createEngineHost({ log, getWindow, onQuit, onCrash }) {
       worker.stdout?.on('data', (c) => log('[engine] ' + String(c).trimEnd()));
       worker.stderr?.on('data', (c) => log('[engine err] ' + String(c).trimEnd()));
       worker.on('exit', (code) => {
+        for (const pending of waiting.values()) {
+          clearTimeout(pending.timer);
+          pending.reject(new Error('процесс движка завершился'));
+        }
+        waiting.clear();
+        streams.clear();
+        worker = null;
         log('движок завершился с кодом ' + code);
         onCrash(code);
       });
       worker.on('message', onMessage);
 
       const ready = new Promise((resolve, reject) => {
-        worker.on('message', (m) => {
+        const child = worker;
+        const cleanup = () => {
+          clearTimeout(timer);
+          child.off('message', onReady);
+          child.off('exit', onExit);
+        };
+        const onReady = (m) => {
+          if (m.t !== 'ready' && m.t !== 'init-error') return;
+          cleanup();
           if (m.t === 'ready') resolve(m);
-          if (m.t === 'init-error') reject(new Error(m.error));
-        });
-        setTimeout(() => reject(new Error('движок не запустился за 30 секунд')), 30000);
+          else reject(new Error(m.error));
+        };
+        const onExit = () => {
+          cleanup();
+          reject(new Error('движок завершился при запуске'));
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('движок не запустился за 30 секунд'));
+        }, 30000);
+        child.on('message', onReady);
+        child.once('exit', onExit);
       });
       worker.postMessage({
         t: 'init',
@@ -124,9 +159,9 @@ function createEngineHost({ log, getWindow, onQuit, onCrash }) {
     async stop() {
       if (!worker) return;
       try {
-        await ask({ t: 'stop' }, 8000);
+        await ask({ t: 'stop' }, 150000);
       } finally {
-        worker.kill();
+        worker?.kill();
       }
     },
   };

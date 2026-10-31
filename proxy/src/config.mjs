@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG = {
 };
 
 export function normalizeConfig(raw) {
-  const cfg = { ...DEFAULT_CONFIG, ...raw };
+  const cfg = { ...structuredClone(DEFAULT_CONFIG), ...raw };
   cfg.sites = Array.isArray(cfg.sites) ? cfg.sites : [];
   cfg.roots = Array.isArray(cfg.roots) ? cfg.roots : [];
   cfg.moduleRoots = cfg.moduleRoots && typeof cfg.moduleRoots === 'object' ? cfg.moduleRoots : {};

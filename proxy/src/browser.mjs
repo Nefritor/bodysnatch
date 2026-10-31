@@ -52,7 +52,7 @@ export const browserArgs = ({ pacUrl, spki, profileDir }) => [
 ];
 
 /** Запустить браузер отдельным процессом. Возвращает { ok, browser } или { ok:false, error }. */
-export function launchBrowser({ platformId, pacUrl, certPem, profileDir, env = process.env, home = '' }) {
+export async function launchBrowser({ platformId, pacUrl, certPem, profileDir, env = process.env, home = '' }) {
   const found = findBrowser(platformId, env, home);
   if (!found) return { ok: false, error: 'Chrome или Edge не найдены — установите один из них' };
   fs.mkdirSync(profileDir, { recursive: true });
@@ -60,7 +60,10 @@ export function launchBrowser({ platformId, pacUrl, certPem, profileDir, env = p
     detached: true,
     stdio: 'ignore',
   });
-  child.on('error', () => undefined);
+  const result = await new Promise((resolve) => {
+    child.once('error', (error) => resolve({ ok: false, error: 'не удалось запустить браузер: ' + error.message }));
+    child.once('spawn', () => resolve({ ok: true, browser: found.name }));
+  });
   child.unref();
-  return { ok: true, browser: found.name };
+  return result;
 }

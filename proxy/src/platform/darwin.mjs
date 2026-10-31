@@ -15,6 +15,7 @@ const KEYCHAIN = path.join(os.homedir(), 'Library', 'Keychains', 'login.keychain
 
 async function services() {
   const r = await run('networksetup', ['-listallnetworkservices']);
+  if (!r.ok) throw new Error('не удалось прочитать сетевые службы: ' + r.stderr.trim());
   return r.stdout
     .split('\n')
     .slice(1) // первая строка — пояснение про звёздочку
@@ -24,20 +25,48 @@ async function services() {
 
 const field = (text, name) => new RegExp(`^${name}:\\s*(.*)$`, 'm').exec(text)?.[1]?.trim() || '';
 
+/** Определяем основную сетевую службу, а не первую строку networksetup. */
+async function primaryService() {
+  const global = await run('scutil', [], {
+    input: 'show State:/Network/Global/IPv4\nshow State:/Network/Global/IPv6\nquit\n',
+  });
+  if (!global.ok) throw new Error('не удалось определить основную сетевую службу');
+  const ids = [...global.stdout.matchAll(/PrimaryService\s*:\s*([A-Fa-f0-9-]+)/g)].map((match) => match[1]);
+  if (!ids.length) return '';
+  const setup = await run('scutil', [], {
+    input: [...new Set(ids)].map((uuid) => `show Setup:/Network/Service/${uuid}\n`).join('') + 'quit\n',
+  });
+  if (!setup.ok) throw new Error('не удалось прочитать основную сетевую службу');
+  return /UserDefinedName\s*:\s*([^\r\n]+)/.exec(setup.stdout)?.[1]?.trim() || '';
+}
+
 export async function proxyState() {
   const names = await services();
-  const perService = await Promise.all(
-    names.map(async (name) => {
-      const auto = await run('networksetup', ['-getautoproxyurl', name]);
-      return { name, pacUrl: field(auto.stdout, 'Enabled') === 'Yes' ? field(auto.stdout, 'URL') : '' };
-    }),
-  );
-  const secure = names.length ? await run('networksetup', ['-getsecurewebproxy', names[0]]) : { stdout: '' };
+  const [activeService, perService] = await Promise.all([
+    primaryService(),
+    Promise.all(
+      names.map(async (name) => {
+        const auto = await run('networksetup', ['-getautoproxyurl', name]);
+        if (!auto.ok) throw new Error('не удалось прочитать PAC службы ' + name);
+        return {
+          name,
+          autoConfigUrl: field(auto.stdout, 'URL'),
+          pacUrl: field(auto.stdout, 'Enabled') === 'Yes' ? field(auto.stdout, 'URL') : '',
+        };
+      }),
+    ),
+  ]);
+  const active = perService.find((s) => s.name === activeService);
+  const secure = names.length
+    ? await run('networksetup', ['-getsecurewebproxy', active?.name || names[0]])
+    : { stdout: '' };
   const host = field(secure.stdout, 'Server');
   const port = field(secure.stdout, 'Port');
   return {
-    // pacUrl — любой включённый PAC; по нему узнаём «наш» прокси
-    pacUrl: perService.find((s) => s.pacUrl)?.pacUrl || '',
+    // При VPN primary может отсутствовать в networksetup: оставляем конфигурацию,
+    // а отличие effectiveProxy показываем отдельным предупреждением.
+    pacUrl: active ? active.pacUrl : perService.find((s) => s.pacUrl)?.pacUrl || '',
+    activeService,
     services: perService,
     manual: { enabled: field(secure.stdout, 'Enabled') === 'Yes', server: host && port ? `${host}:${port}` : '' },
   };
@@ -66,7 +95,7 @@ async function applyAll(commands) {
     if (!r.ok) failures.push(args);
   }
   if (!failures.length) return;
-  const script = failures.map((a) => ['networksetup', ...a].map(shq).join(' ')).join('; ');
+  const script = failures.map((a) => ['networksetup', ...a].map(shq).join(' ')).join(' && ');
   const apple = `do shell script "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" with administrator privileges`;
   const r = await run('osascript', ['-e', apple], { timeout: 120000 });
   if (!r.ok) throw new Error('не удалось изменить сетевые настройки: ' + r.stderr.trim().slice(0, 200));
@@ -74,6 +103,7 @@ async function applyAll(commands) {
 
 export async function setPac(url) {
   const names = await services();
+  if (!names.length) throw new Error('нет доступных сетевых служб для PAC');
   await applyAll(
     names.flatMap((n) => [
       ['-setautoproxyurl', n, url],
@@ -82,18 +112,19 @@ export async function setPac(url) {
   );
 }
 
-export async function restoreProxy(prev) {
-  const names = await services();
-  const before = new Map((prev?.services || []).map((s) => [s.name, s.pacUrl]));
+export async function restoreProxy(prev, ownedPac = '') {
+  const current = await proxyState();
+  const before = new Map((prev?.services || []).map((s) => [s.name, s]));
   await applyAll(
-    names.flatMap((n) => {
-      const url = before.get(n);
-      return url
-        ? [
-            ['-setautoproxyurl', n, url],
-            ['-setautoproxystate', n, 'on'],
-          ]
-        : [['-setautoproxystate', n, 'off']];
+    current.services.flatMap((service) => {
+      // Чужую/отключённую извне настройку не возвращаем к старому снимку.
+      if (ownedPac && service.pacUrl.split('?')[0] !== ownedPac) return [];
+      const saved = before.get(service.name);
+      const url = saved?.autoConfigUrl || saved?.pacUrl;
+      return [
+        ...(url ? [['-setautoproxyurl', service.name, url]] : []),
+        ['-setautoproxystate', service.name, saved?.pacUrl ? 'on' : 'off'],
+      ];
     }),
   );
 }

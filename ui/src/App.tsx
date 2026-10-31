@@ -51,6 +51,8 @@ export function App() {
   const [files, setFiles] = useState<MaskOption[] | null>(null);
   const [message, setMessage] = useState('');
   const initialized = useRef(false);
+  const saving = useRef(0);
+  const saves = useRef<Promise<unknown>>(Promise.resolve());
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stepBodyRef = useRef<HTMLDivElement | null>(null);
   const native = api.hasNativeShell();
@@ -151,20 +153,35 @@ export function App() {
     setFiles(state.files);
   }, [state]);
 
+  // Изменения через управляющий API должны появляться и в уже открытом окне.
+  useEffect(() => {
+    if (!state || saving.current) return;
+    setMask(state.mask);
+    setFiles(state.files);
+  }, [state]);
+
   /** сохранить маску/файлы в конфиг прокси */
   const persist = useCallback(
     async (nextMask: SiteMask | null, nextFiles: MaskOption[] | null) => {
       if (!state) return;
-      const sites = (state.sites || []).map((s, i) =>
-        i === 0 ? { ...s, mask: nextMask ?? s.mask, files: nextFiles ?? s.files } : s,
+      const index = Math.max(
+        0,
+        state.sites.findIndex((s) => s.enabled !== false),
       );
+      const patch = { ...(nextMask ? { mask: nextMask } : {}), ...(nextFiles ? { files: nextFiles } : {}) };
+      saving.current += 1;
       try {
-        await api.saveConfig({ sites, roots: state.roots.map((r) => r.path), moduleRoots: state.moduleRoots });
-      } catch {
-        /* следующий опрос покажет актуальное */
+        const result = saves.current.then(() => api.saveSite(index, patch));
+        saves.current = result.catch(() => {});
+        await result;
+      } catch (e) {
+        setMessage(String((e as Error).message || e));
+      } finally {
+        saving.current -= 1;
+        if (!saving.current) await refresh();
       }
     },
-    [state],
+    [state, refresh],
   );
 
   const run = useCallback(
@@ -191,7 +208,14 @@ export function App() {
 
   const frame = (children: React.ReactNode) => (
     <div className="flex h-screen flex-col overflow-hidden">
-      {native && <TitleBar running={Boolean(state?.enabled)} version={state?.version} />}
+      {native && (
+        <TitleBar
+          running={Boolean(state?.enabled)}
+          version={state?.version}
+          theme={state?.config?.theme}
+          onChanged={() => void refresh()}
+        />
+      )}
       <main className={cn('min-h-0 flex-1 pl-2 pr-2', step !== Step.Work && 'pb-2')}>
         <div className={cn('h-full', shell)}>{children}</div>
       </main>
@@ -291,11 +315,11 @@ export function App() {
             onChanged={() => void refresh()}
             onMaskChange={(next) => {
               setMask(next);
-              void persist(next, files);
+              void persist(next, null);
             }}
             onFilesChange={(next) => {
               setFiles(next);
-              void persist(mask, next);
+              void persist(null, next);
             }}
             onDone={() => setStep(Step.Work)}
           />
@@ -307,7 +331,8 @@ export function App() {
             log={log}
             onClearLog={() => void clearLog()}
             busy={busy}
-            onToggle={(on) => run(() => Promise.all([api.setEnabled(on), on ? api.proxyOn() : api.proxyOff()]))}
+            notice={message || error}
+            onToggle={(on) => run(() => api.setEnabled(on))}
             onSettings={() => setStep(Step.Cert)}
             rulesSlot={
               <RulesScreen
@@ -317,11 +342,11 @@ export function App() {
                 onChanged={() => void refresh()}
                 onMaskChange={(next) => {
                   setMask(next);
-                  void persist(next, files);
+                  void persist(next, null);
                 }}
                 onFilesChange={(next) => {
                   setFiles(next);
-                  void persist(mask, next);
+                  void persist(null, next);
                 }}
                 onDone={() => setStep(Step.Work)}
                 embedded

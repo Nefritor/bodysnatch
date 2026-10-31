@@ -14,6 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci
+      - run: npm run lint
+      - run: npm test
       - run: npm run build
       - name: Сборка dmg (arm64)
         run: npx electron-builder --mac dmg --arm64 --publish never
@@ -37,16 +39,35 @@ jobs:
       - name: Запуск приложения
         run: |
           export BODYSNATCH_DATA_DIR="$RUNNER_TEMP/bs-data"
-          "$APP/Contents/MacOS/BodySnatch" --remote-debugging-port=9333 > "$RUNNER_TEMP/app.log" 2>&1 &
+          "$APP/Contents/MacOS/BodySnatch" > "$RUNNER_TEMP/app.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/app.pid"
-          sleep 12
-          echo "== процесс жив?"; (kill -0 "$(cat "$RUNNER_TEMP/app.pid")" && echo да) || echo НЕТ
+          for attempt in $(seq 1 30); do
+            [ -f "$BODYSNATCH_DATA_DIR/control-api.json" ] && break
+            sleep 1
+          done
+          kill -0 "$(cat "$RUNNER_TEMP/app.pid")"
+          node scripts/bodysnatch-api.mjs GET /api/capabilities
+          node scripts/bodysnatch-api.mjs GET /api/state > "$RUNNER_TEMP/state.json"
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import assert from 'node:assert/strict';
+            const state = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/state.json'));
+            assert.equal(state.platform, 'darwin');
+            assert.equal(state.enabled, false);
+            assert.equal(state.version, JSON.parse(fs.readFileSync('package.json')).version);
+            console.log('macOS API and packaged engine: OK');
+          "
           echo "== вывод приложения"; cat "$RUNNER_TEMP/app.log" || true
           echo "== shell.log"; cat "$BODYSNATCH_DATA_DIR/shell.log" 2>&1 || true
-          echo "== проверка окна"; node scripts/smoke-check.mjs 9333 || true
           screencapture -x "$RUNNER_TEMP/screen.png" || true
           echo "== отчёты о падениях"; ls -la ~/Library/Logs/DiagnosticReports 2>&1 || true
           for f in ~/Library/Logs/DiagnosticReports/BodySnatch*; do [ -f "$f" ] && { echo "--- $f"; head -80 "$f"; }; done || true
+
+      - name: Корректный выход
+        if: always()
+        env:
+          BODYSNATCH_DATA_DIR: ${{ runner.temp }}/bs-data
+        run: node scripts/bodysnatch-api.mjs POST /api/quit || true
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -60,6 +60,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
   let lastCheck = 0;
   let timer = null;
   let checking = false;
+  let firstTimer = null;
 
   const dir = () => path.join(app.getPath('temp'), 'BodySnatch-update');
   const filePath = () => path.join(dir(), asset.name);
@@ -77,16 +78,15 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
   };
 
   /** Файл уже скачан раньше (например, в прошлый запуск) и цел? */
-  function cachedFileOk() {
+  async function cachedFileOk() {
     try {
       const file = filePath();
       if (!fs.existsSync(file)) return false;
       if (asset.size && fs.statSync(file).size !== asset.size) return false;
-      if (asset.sha256) {
-        const hash = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-        return hash === asset.sha256;
-      }
-      return true;
+      if (!asset.sha256) return false;
+      const hash = crypto.createHash('sha256');
+      for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+      return hash.digest('hex') === asset.sha256;
     } catch {
       return false;
     }
@@ -97,6 +97,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
     checking = true;
     try {
       const res = await net.fetch(API_URL, {
+        signal: AbortSignal.timeout(30000),
         headers: {
           'user-agent': `BodySnatch/${currentVersion}`,
           accept: 'application/vnd.github+json',
@@ -131,7 +132,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
         sha256: /^sha256:([0-9a-f]{64})$/i.exec(String(found.digest || ''))?.[1]?.toLowerCase() || '',
       };
       log(`обновления: доступна версия ${version}`);
-      const have = cachedFileOk();
+      const have = await cachedFileOk();
       set({
         status: have ? 'ready' : 'available',
         version,
@@ -154,8 +155,12 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
     const part = file + '.part';
     set({ status: 'downloading', progress: 0, received: 0, speed: 0, error: '' });
     try {
+      if (!asset.sha256) throw new Error('в метаданных релиза нет SHA-256: автоматическая установка недоступна');
       fs.mkdirSync(dir(), { recursive: true });
-      const res = await net.fetch(asset.url, { headers: { 'user-agent': `BodySnatch/${currentVersion}` } });
+      const res = await net.fetch(asset.url, {
+        headers: { 'user-agent': `BodySnatch/${currentVersion}` },
+        signal: AbortSignal.timeout(15 * 60 * 1000),
+      });
       if (!res.ok || !res.body) throw new Error(`сервер ответил ${res.status}`);
       const total = Number(res.headers.get('content-length')) || asset.size || 0;
       const hash = crypto.createHash('sha256');
@@ -180,6 +185,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
         }
       });
       await pipeline(source, fs.createWriteStream(part));
+      if (asset.size && received !== asset.size) throw new Error('размер установщика не совпал с метаданными релиза');
       if (asset.sha256 && hash.digest('hex') !== asset.sha256) throw new Error('контрольная сумма не совпала');
       fs.renameSync(part, file);
       set({ status: 'ready', progress: 1, received: received || asset.size, total: total || asset.size });
@@ -191,8 +197,12 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
     }
   }
 
-  function install() {
+  async function install() {
     if (state.status !== 'ready' || !asset) return;
+    if (!(await cachedFileOk())) {
+      set({ status: 'error', progress: 0, error: 'установщик отсутствует или изменён: скачайте его снова' });
+      return;
+    }
     onInstall(filePath());
   }
 
@@ -203,7 +213,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
     install,
     /** Запустить периодические проверки. */
     start() {
-      setTimeout(() => void check(), FIRST_CHECK_MS);
+      firstTimer = setTimeout(() => void check(), FIRST_CHECK_MS);
       timer = setInterval(() => void check(), CHECK_EVERY_MS);
       timer.unref?.();
     },
@@ -213,6 +223,7 @@ function createUpdater({ currentVersion, log, onState, onInstall }) {
     },
     stop() {
       if (timer) clearInterval(timer);
+      if (firstTimer) clearTimeout(firstTimer);
     },
   };
 }

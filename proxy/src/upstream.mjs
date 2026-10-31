@@ -16,7 +16,7 @@ export function parseProxy(value) {
     .replace(/^https?:\/\//i, '')
     .replace(/\/.*$/, '');
   const m = /^([^:\s]+):(\d{1,5})$/.exec(s);
-  return m ? { host: m[1], port: Number(m[2]) } : null;
+  return m && Number(m[2]) >= 1 && Number(m[2]) <= 65535 ? { host: m[1], port: Number(m[2]) } : null;
 }
 
 function trustedRoots(log) {
@@ -49,8 +49,12 @@ class TunnelAgent extends https.Agent {
           ca: this.caList,
           ALPNProtocols: ['http/1.1'],
         });
-        secure.once('secureConnect', () => cb(null, secure));
-        secure.once('error', (e) => cb(e));
+        const fail = (e) => cb(e);
+        secure.once('error', fail);
+        secure.once('secureConnect', () => {
+          secure.off('error', fail);
+          cb(null, secure);
+        });
       },
       (e) => cb(e),
     );
@@ -70,6 +74,7 @@ function connectThrough(proxy, host, port) {
     socket.once('connect', () => socket.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`));
     const onData = (chunk) => {
       buf += chunk.toString('latin1');
+      if (buf.length > 65536) return fail(new Error('слишком большой ответ CONNECT'));
       const end = buf.indexOf('\r\n\r\n');
       if (end < 0) return;
       socket.off('data', onData);
@@ -82,6 +87,9 @@ function connectThrough(proxy, host, port) {
       resolve(socket);
     };
     socket.on('data', onData);
+    socket.once('end', () => {
+      if (buf.indexOf('\r\n\r\n') < 0) fail(new Error('вышестоящий прокси закрыл CONNECT'));
+    });
   });
 }
 
@@ -131,7 +139,11 @@ export function createUpstream({ getProxy = () => '', log = () => {} } = {}) {
       if (proxy) return connectThrough(proxy, host, port);
       return new Promise((resolve, reject) => {
         const socket = net.connect({ host, port, autoSelectFamily: true });
-        socket.once('connect', () => resolve(socket));
+        socket.setTimeout(15000, () => socket.destroy(new Error('таймаут CONNECT')));
+        socket.once('connect', () => {
+          socket.setTimeout(0);
+          resolve(socket);
+        });
         socket.once('error', reject);
       });
     },

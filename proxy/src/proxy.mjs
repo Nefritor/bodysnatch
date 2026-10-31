@@ -46,6 +46,7 @@ const HOP = new Set([
 const LIVE_PATH = '/__bodysnatch/';
 const LIVE_SCRIPT = `(()=>{if(window.__bsLR)return;window.__bsLR=1;const es=new EventSource('${LIVE_PATH}events');es.onmessage=(e)=>{let d;try{d=JSON.parse(e.data)}catch{return}if(d.type==='css'){document.querySelectorAll('link[rel~=stylesheet]').forEach((l)=>{const u=new URL(l.href);u.searchParams.set('__bs',Date.now());const n=l.cloneNode();n.href=u.href;n.onload=()=>l.remove();l.after(n)})}else location.reload()}})();`;
 const LIVE_TAG = `<script src="${LIVE_PATH}livereload.js"></script>`;
+const MAX_LIVE_HTML = 8 * 1024 * 1024;
 
 const isLoopback = (h) => h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]';
 const LOG_CAP = 600;
@@ -88,6 +89,7 @@ export function createProxy({
     if (!ctx) {
       const leaf = leafFor(host);
       ctx = tls.createSecureContext({ key: leaf.keyPem, cert: leaf.certPem });
+      if (contexts.size >= 2000) contexts.clear();
       contexts.set(host, ctx);
     }
     return ctx;
@@ -131,13 +133,26 @@ export function createProxy({
       // no-cache = «каждый раз спроси у прокси»: изменение файла видно сразу, а
       // неизменённый файл браузер получает ответом 304 без тела
       'cache-control': 'no-cache',
-      'x-bodysnatch': `${local.via}:${file}`,
+      'x-bodysnatch': `${local.via}:${encodeURI(file)}`,
       'access-control-allow-origin': '*',
       'cross-origin-resource-policy': 'cross-origin',
     };
+    const status = String(req.headers['if-none-match'] || '')
+      .split(',')
+      .some((v) => v.trim() === etag || v.trim() === '*')
+      ? 304
+      : 200;
     hits.local += 1;
-    record({ via: local.via, status: 200, url, note: file, file, module: local.moduleName || '', bytes: st.size });
-    if (req.headers['if-none-match'] === etag) {
+    record({
+      via: local.via,
+      status,
+      url,
+      note: file,
+      file,
+      module: local.moduleName || '',
+      bytes: status === 304 || req.method === 'HEAD' ? 0 : st.size,
+    });
+    if (status === 304) {
       res.writeHead(304, headers);
       return res.end();
     }
@@ -152,43 +167,102 @@ export function createProxy({
   // ── проброс на сервер ──────────────────────────────────────────────────────
   const forward = (req, res, target) => {
     const url = target.href;
+    const debugging = state.enabled && hostMatches(config, target.hostname);
+    const connectionHeaders = new Set(
+      String(req.headers.connection || '')
+        .toLowerCase()
+        .split(',')
+        .map((v) => v.trim()),
+    );
     const headers = {};
     for (const [k, v] of Object.entries(req.headers)) {
-      if (HOP.has(k) || k === 'host' || k.startsWith('proxy-')) continue;
+      if (HOP.has(k) || connectionHeaders.has(k) || k === 'host' || k.startsWith('proxy-')) continue;
       headers[k] = v;
     }
     const injectLive =
       config.liveReload === true &&
+      debugging &&
       req.method === 'GET' &&
       (req.headers['sec-fetch-dest'] === 'document' || /text\/html/.test(String(req.headers.accept || '')));
     // чтобы вставить скрипт, нужен несжатый HTML; остальные ответы идут как есть
     if (injectLive) headers['accept-encoding'] = 'identity';
 
     const upReq = upstream.request(target, { method: req.method, headers, timeout: upstreamTimeoutMs }, (up) => {
+      up.on('error', (error) => {
+        record({ via: 'error', status: 502, url, note: error.message });
+        plain(res, 502, 'BodySnatch: ответ сервера оборван');
+      });
       const out = {};
+      const responseConnection = new Set(
+        String(up.headers.connection || '')
+          .toLowerCase()
+          .split(',')
+          .map((v) => v.trim()),
+      );
       for (const [k, v] of Object.entries(up.headers)) {
-        if (HOP.has(k)) continue;
+        if (HOP.has(k) || responseConnection.has(k)) continue;
         // CSP и X-Frame-Options сайта мешают локальной отладке; снимаем только на подменяемых хостах
-        if (k === 'content-security-policy' || k === 'content-security-policy-report-only' || k === 'x-frame-options')
+        if (
+          debugging &&
+          (k === 'content-security-policy' || k === 'content-security-policy-report-only' || k === 'x-frame-options')
+        )
           continue;
         out[k] = v;
       }
       // браузер должен приходить за файлом к нам, а не брать его из своего кэша;
       // etag/last-modified остаются, поэтому неизменённое придёт ответом 304
-      out['cache-control'] = 'no-cache';
-      delete out.expires;
-      delete out.pragma;
+      if (debugging) {
+        out['cache-control'] = 'no-cache';
+        delete out.expires;
+        delete out.pragma;
+      }
 
-      const isHtml = /text\/html/i.test(String(out['content-type'] || ''));
-      if (injectLive && isHtml && !out['content-encoding'] && up.statusCode === 200) {
+      const contentType = String(out['content-type'] || '');
+      const isHtml = /text\/html/i.test(contentType) && !/charset\s*=\s*["']?utf-(?:16|32)/i.test(contentType);
+      if (
+        injectLive &&
+        isHtml &&
+        !out['content-encoding'] &&
+        up.statusCode === 200 &&
+        !(Number(out['content-length']) > MAX_LIVE_HTML)
+      ) {
         const chunks = [];
-        up.on('data', (c) => chunks.push(c));
+        let size = 0;
+        let streaming = false;
+        up.on('data', (chunk) => {
+          size += chunk.length;
+          if (streaming) return;
+          chunks.push(chunk);
+          if (size <= MAX_LIVE_HTML) return;
+          // Неизвестный/огромный HTML отдаём потоком, не накапливая всё тело в памяти.
+          streaming = true;
+          up.pause();
+          res.writeHead(200, out);
+          const buffered = Buffer.concat(chunks);
+          chunks.length = 0;
+          const ready = res.write(buffered);
+          const resume = () => {
+            if (!res.destroyed) up.pipe(res);
+          };
+          if (ready) resume();
+          else res.once('drain', resume);
+        });
         up.on('end', () => {
-          let html = Buffer.concat(chunks).toString('utf8');
-          html = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, LIVE_TAG + '</head>') : LIVE_TAG + html;
-          const body = Buffer.from(html, 'utf8');
+          if (streaming) {
+            hits.remote += 1;
+            record({ via: 'passthrough', status: 200, url, bytes: size, note: 'HTML превышает лимит live-reload' });
+            return;
+          }
+          // ASCII-разметка вставляется между байтами: исходная кодировка HTML сохраняется.
+          const html = Buffer.concat(chunks);
+          const head = html.toString('latin1').search(/<\/head>/i);
+          const at = head < 0 ? 0 : head;
+          const body = Buffer.concat([html.subarray(0, at), Buffer.from(LIVE_TAG), html.subarray(at)]);
           out['content-length'] = body.length;
           delete out.etag;
+          delete out['content-md5'];
+          delete out.digest;
+          delete out['content-digest'];
           res.writeHead(200, out);
           res.end(body);
           hits.remote += 1;
@@ -270,7 +344,8 @@ export function createProxy({
       }
 
       const site = state.enabled ? pickSite(config, target.href) : null;
-      const local = site ? resolveLocal(config, site, target, files) : null;
+      const local =
+        site && (req.method === 'GET' || req.method === 'HEAD') ? resolveLocal(config, site, target, files) : null;
       if (local && local.file) return sendLocal(req, res, local, target.href);
       if (local && local.missing && site.useLocal !== false) {
         record({ via: 'map-miss', status: 0, url: target.href, note: String(local.missing) });
@@ -344,6 +419,7 @@ export function createProxy({
     if (!m) return socket.destroy();
     const host = m[1].toLowerCase();
     const port = Number(m[2]);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return socket.destroy();
 
     const intercept = state.enabled && !isLoopback(host) && hostMatches(config, host) && canIssue(host);
     if (!intercept) {

@@ -17,6 +17,7 @@ import { makeApi } from './api.mjs';
 import { launchBrowser } from './browser.mjs';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
+import { startControlApi } from './control.mjs';
 
 /** "http=a:1;https=b:2" или "a:1" → "a:1" */
 function manualServer(value) {
@@ -53,6 +54,17 @@ export async function createEngine({
   const events = new EventEmitter();
   events.setMaxListeners(50);
   let listenPort = 0;
+  let control = null;
+  let monitor = null;
+  let settleTimer = null;
+  let proxyOperation = Promise.resolve();
+  let routeMode = 'off';
+  let checking = false;
+  const serializeProxy = (fn) => {
+    const next = proxyOperation.then(fn);
+    proxyOperation = next.catch(() => {});
+    return next;
+  };
 
   const config = loadConfig(configPath, defaultConfigPath);
   const basePort = port || Number(config.port) || 8180;
@@ -81,6 +93,7 @@ export async function createEngine({
   const pacText = () => buildPac(config, listenPort || basePort, fallbackRoute());
 
   const proxy = createProxy({
+    enabled: false,
     config,
     ca,
     files,
@@ -135,18 +148,51 @@ export async function createEngine({
     return cache.trust;
   }
 
+  const ownsSystemPac = (s) => !!s && s.pacUrl?.split('?')[0] === pacBase();
+  const hasSystemPac = (s, base = pacBase()) =>
+    [s, ...(s?.services || [])].some((item) => item?.pacUrl?.split('?')[0] === base);
+
   async function enableSystemProxy() {
     const current = await platform.proxyState();
     // свой же PAC от прошлого запуска не считаем «прежним состоянием»
-    const previous = isOurPac(current.pacUrl) ? (readSnapshot()?.previous ?? null) : current;
+    const saved = readSnapshot()?.previous;
+    let previous = ownsSystemPac(current) ? (saved ?? null) : current;
+    if (current.services?.length) {
+      const before = new Map((saved?.services || []).map((item) => [item.name, item]));
+      const services = current.services.map((item) =>
+        ownsSystemPac(item) ? before.get(item.name) || { ...item, pacUrl: '', autoConfigUrl: '' } : item,
+      );
+      previous = {
+        ...current,
+        pacUrl: services.find((item) => item.name === current.activeService)?.pacUrl || '',
+        services,
+      };
+    }
     fs.mkdirSync(stateDir, { recursive: true });
-    fs.writeFileSync(snapshotFile, JSON.stringify({ previous }), 'utf8');
+    const tmp = snapshotFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ previous, pacUrl: pacBase() }), { mode: 0o600 });
+    fs.renameSync(tmp, snapshotFile);
     upstreamFromSystem = previous && previous.manual?.enabled ? manualServer(previous.manual.server) : '';
-    await platform.setPac(pacUrl());
+    try {
+      await platform.setPac(pacUrl());
+      if (!ownsSystemPac(await platform.proxyState())) throw new Error('система не включила PAC BodySnatch');
+    } catch (error) {
+      // setPac может успеть изменить часть настроек до ошибки.
+      try {
+        // Откат частичного setPac возвращает все затронутые службы к снимку.
+        await platform.restoreProxy(previous);
+        clearSnapshot();
+      } catch (rollback) {
+        log('откат PAC: ' + rollback.message);
+      }
+      throw error;
+    }
     cache.sys = null;
     enabledAt = Date.now();
     // через паузу интерфейс перепроверит, применила ли система PAC на самом деле
-    setTimeout(() => events.emit('state'), SETTLE_MS + 200).unref();
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => events.emit('state'), SETTLE_MS + 200);
+    settleTimer.unref();
     events.emit('state');
   }
 
@@ -161,7 +207,7 @@ export async function createEngine({
       cache.eff = await platform.effectiveProxy().catch(() => null);
       cache.effAt = Date.now();
     }
-    return !!cache.eff && !isOurPac(cache.eff.pacUrl);
+    return !!cache.eff && !ownsSystemPac(cache.eff);
   }
 
   /** Запустить Chrome/Edge с PAC и доверием к корню прямо во флагах — в обход системных настроек. */
@@ -177,26 +223,70 @@ export async function createEngine({
 
   async function disableSystemProxy() {
     const current = await platform.proxyState();
-    if (isOurPac(current.pacUrl)) {
+    if (hasSystemPac(current)) {
       const saved = readSnapshot();
-      await platform.restoreProxy(saved ? saved.previous : null);
+      await platform.restoreProxy(saved ? saved.previous : null, pacBase());
     }
     clearSnapshot();
     cache.sys = null;
     enabledAt = 0;
+    upstreamFromSystem = '';
     events.emit('state');
   }
 
+  async function reconcileProxy(maxAge = 1500) {
+    return serializeProxy(async () => {
+      const sys = await systemState(maxAge);
+      if (routeMode === 'system' && !ownsSystemPac(sys)) {
+        routeMode = 'off';
+        enabledAt = 0;
+        proxy.setEnabled(false);
+      }
+      return sys;
+    });
+  }
+
+  async function setEnabled(enabled) {
+    return serializeProxy(async () => {
+      if (enabled) {
+        try {
+          await enableSystemProxy();
+        } catch (error) {
+          cache.sys = null;
+          if (routeMode === 'system') {
+            routeMode = 'off';
+            proxy.setEnabled(false);
+          }
+          throw error;
+        }
+        routeMode = 'system';
+        proxy.setEnabled(true);
+      } else {
+        // Даже при отказе ОС подмена должна остановиться; снимок остаётся для повторного снятия PAC.
+        routeMode = 'off';
+        proxy.setEnabled(false);
+        await disableSystemProxy();
+      }
+      return proxy.state.enabled;
+    });
+  }
+
   /** Правила изменились: PAC мог измениться, браузерам нужно сказать об этом. */
-  async function configChanged() {
-    files.watch(rootPaths());
-    files.clear();
-    const current = await systemState(0).catch(() => null);
-    if (current && isOurPac(current.pacUrl) && current.pacUrl !== pacUrl()) {
-      await platform.setPac(pacUrl()).catch((e) => log('PAC: ' + e.message));
-      cache.sys = null;
-    }
-    events.emit('state');
+  function configChanged() {
+    return serializeProxy(async () => {
+      files.watch(rootPaths());
+      files.clear();
+      const current = await systemState(0).catch(() => null);
+      if (ownsSystemPac(current) && current.pacUrl !== pacUrl()) {
+        try {
+          await platform.setPac(pacUrl());
+        } finally {
+          cache.sys = null;
+          events.emit('state');
+        }
+      }
+      events.emit('state');
+    });
   }
 
   const engine = {
@@ -218,6 +308,23 @@ export async function createEngine({
     pacText,
     isOurPac,
     systemState,
+    reconcileProxy,
+    ownsSystemPac,
+    setEnabled,
+    get routeMode() {
+      return routeMode;
+    },
+    async launchBrowser() {
+      return serializeProxy(async () => {
+        const result = await openBrowser();
+        if (result.ok) {
+          // Отдельный профиль использует PAC независимо от системного прокси.
+          if (routeMode !== 'system') routeMode = 'browser';
+          proxy.setEnabled(true);
+        }
+        return result;
+      });
+    },
     proxyOverridden,
     openBrowser,
     certTrusted,
@@ -244,7 +351,9 @@ export async function createEngine({
     configChanged,
     saveConfig: () => saveConfig(config),
     resetCA: async () => {
-      await platform.certUninstall({ pem: ca.certPem, file: ca.certPath }).catch(() => {});
+      const result = await platform.certUninstall({ pem: ca.certPem, file: ca.certPath });
+      if (!result.ok || (await platform.certTrusted({ pem: ca.certPem, file: ca.certPath })))
+        throw new Error('не удалось удалить сертификат из системы; ключ сохранён');
       removeCA(certsDir);
     },
 
@@ -268,21 +377,46 @@ export async function createEngine({
       // приложение могли убить, не дав снять PAC: возвращаем прежние настройки
       try {
         const current = await platform.proxyState();
-        if (isOurPac(current.pacUrl)) {
-          const saved = readSnapshot();
-          await platform.restoreProxy(saved ? saved.previous : null);
+        const saved = readSnapshot();
+        if (
+          saved &&
+          (saved.pacUrl
+            ? hasSystemPac(current, saved.pacUrl)
+            : [current, ...(current.services || [])].some((item) => isOurPac(item.pacUrl)))
+        ) {
+          await platform.restoreProxy(saved.previous, saved.pacUrl || '');
           log('сняли PAC от прошлого запуска');
         }
         clearSnapshot();
       } catch (e) {
         log('проверка системного прокси: ' + e.message);
       }
+      control = await startControlApi(engine, stateDir);
+      monitor = setInterval(async () => {
+        // В off/browser системный PAC не управляет подменой. Не запускаем утилиты ОС в простое.
+        if (checking || routeMode !== 'system') return;
+        checking = true;
+        try {
+          const before = cache.sys && JSON.stringify(cache.sys);
+          const sys = await reconcileProxy(0);
+          if (before !== JSON.stringify(sys)) events.emit('state');
+        } catch (error) {
+          log('проверка PAC: ' + error.message);
+        } finally {
+          checking = false;
+        }
+      }, 3000);
+      monitor.unref();
       return listenPort;
     },
 
     async stop() {
+      clearInterval(monitor);
+      clearTimeout(settleTimer);
+      await control?.close();
+      await engine.api.drain();
       try {
-        await disableSystemProxy();
+        await setEnabled(false);
       } catch (e) {
         log('не удалось вернуть системный прокси: ' + e.message);
       }

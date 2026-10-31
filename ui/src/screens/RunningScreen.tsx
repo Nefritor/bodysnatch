@@ -20,6 +20,7 @@ export type RunningScreenProps = {
   log: LogEntry[];
   onClearLog: () => void;
   onToggle: (on: boolean) => void;
+  notice?: string;
   /** вернуться в мастер настройки */
   onSettings: () => void;
   /** готовый блок правил — показывается под спойлером */
@@ -69,17 +70,21 @@ const SETTLE_MS = 60;
 
 type Filter = 'mirror' | 'all' | 'errors';
 
-export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, onSettings, rulesSlot }: RunningScreenProps) => {
+export const RunningScreen = ({
+  snap,
+  log,
+  onClearLog,
+  busy,
+  onToggle,
+  onSettings,
+  rulesSlot,
+  notice,
+}: RunningScreenProps) => {
   const [filter, setFilter] = useState<Filter>('mirror');
   const [query, setQuery] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
   const [queriesOpen, setQueriesOpen] = useState(false);
-  // свитч отзывается мгновенно, не дожидаясь опроса состояния
-  const [pending, setPending] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (pending !== null && snap.enabled === pending) setPending(null);
-  }, [snap.enabled, pending]);
-  const checked = pending ?? snap.enabled;
+  const checked = snap.enabled;
 
   // отдельный Chrome в специальном профиле: работает в обход системных настроек (и VPN)
   const [browserNote, setBrowserNote] = useState('');
@@ -197,10 +202,9 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, onSetting
           <Switch
             checked={checked}
             onChange={(v) => {
-              setPending(v);
               onToggle(v);
             }}
-            label=""
+            label="Подмена файлов"
             title={checked ? 'Приостановить подмену' : 'Включить подмену'}
             disabled={busy}
           />
@@ -219,6 +223,11 @@ export const RunningScreen = ({ snap, log, onClearLog, busy, onToggle, onSetting
           прокси {snap.systemProxy.ours ? 'включён' : 'выключен'} · порт {snap.port} · модулей{' '}
           {Object.keys(snap.moduleRoots || {}).length} · локальных ответов {snap.stats.local}
         </div>
+        {notice ? (
+          <p className="text-xs text-warn" role="alert">
+            {notice}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-x-2 text-xs">
           <button
             type="button"

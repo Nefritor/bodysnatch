@@ -172,7 +172,7 @@ export function stripServicePrefixes(rel, prefixes = DEFAULT_SERVICE_PREFIXES) {
 export function relForSite(site, target) {
   try {
     const rel = decodeURIComponent(target.pathname).replace(/^\/+/, '');
-    return rel.includes('\0') ? null : rel;
+    return rel.includes('\0') || rel.includes('\\') || rel.split('/').some((s) => s === '.' || s === '..') ? null : rel;
   } catch {
     return null;
   }
@@ -227,10 +227,11 @@ export const syncFs = {
 
 export function pickRootForModule(config, roots, moduleName, fsx = syncFs) {
   if (!roots.length) return { root: null, via: 'нет рутов' };
-  const explicit = moduleName ? (config.moduleRoots || {})[moduleName] : null;
+  const explicit =
+    moduleName && Object.hasOwn(config.moduleRoots || {}, moduleName) ? config.moduleRoots[moduleName] : null;
   if (explicit) {
-    const target = String(explicit).toLowerCase();
-    const hit = roots.find((r) => r.toLowerCase() === target);
+    const key = (r) => (process.platform === 'win32' ? path.resolve(r).toLowerCase() : path.resolve(r));
+    const hit = roots.find((r) => key(r) === key(String(explicit)));
     if (hit) return { root: hit, via: 'выбран пользователем' };
   }
   if (moduleName) {
@@ -243,7 +244,8 @@ export function pickRootForModule(config, roots, moduleName, fsx = syncFs) {
 export function insideRoot(root, file) {
   const r = path.resolve(root);
   const f = path.resolve(file);
-  return f === r || f.startsWith(r + path.sep) ? f : null;
+  const rel = path.relative(r, f);
+  return rel === '' || (!path.isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + path.sep)) ? f : null;
 }
 
 /**
@@ -269,7 +271,7 @@ export function resolveLocal(config, site, target, fsx = syncFs) {
   }
 
   // подменяем только выбранные модули
-  if (moduleName && !(config.moduleRoots || {})[moduleName]) {
+  if (moduleName && (!Object.hasOwn(config.moduleRoots || {}, moduleName) || !config.moduleRoots[moduleName])) {
     return { passthrough: true, reason: 'модуль не выбран', moduleName };
   }
 

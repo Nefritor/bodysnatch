@@ -1,7 +1,7 @@
 {
   "name": "bodysnatch-desktop",
   "private": true,
-  "version": "0.1.4-b",
+  "version": "0.1.5",
   "type": "module",
   "description": "BodySnatch Desktop — подмена JS/CSS сайта локальными файлами через локальный MITM-прокси",
   "scripts": {
@@ -12,6 +12,7 @@
     "shell": "electron shell/main.cjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-timeout=30000 \"test/*.test.mjs\"",
+    "api": "node scripts/bodysnatch-api.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:css": "stylelint \"ui/src/**/*.css\"",
@@ -63,6 +64,9 @@
       "!**/*.map"
     ],
     "asar": true,
+    "asarUnpack": [
+      "proxy/src/platform/wininet.ps1"
+    ],
     "electronLanguages": [
       "ru",
       "en-US"

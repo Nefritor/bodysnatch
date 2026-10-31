@@ -13,12 +13,14 @@ export type TitleBarProps = {
   running: boolean;
   /** текущая версия приложения */
   version?: string;
+  theme?: 'auto' | 'light' | 'dark';
+  onChanged?: () => void;
 };
 
 const tbButton =
   'grid size-8 w-12 place-items-center text-ink-soft transition-colors hover:bg-[var(--c-row-hover)] hover:text-ink';
 
-export const TitleBar = ({ running, version }: TitleBarProps) => {
+export const TitleBar = ({ running, version, theme, onChanged }: TitleBarProps) => {
   const mac = api.platform() === 'darwin';
   return (
     <div
@@ -32,7 +34,7 @@ export const TitleBar = ({ running, version }: TitleBarProps) => {
       {version ? <span className="text-[11px] text-ink-muted">v{version}</span> : null}
       <div className="ml-auto flex h-full items-center [-webkit-app-region:no-drag]">
         <UpdateButton />
-        <ThemeMenu />
+        <ThemeMenu savedMode={theme} onChanged={onChanged} />
         {mac ? null : (
           <>
             <button

@@ -84,5 +84,6 @@ export class FileCache {
     this.watchers.clear();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.pending.clear();
   }
 }

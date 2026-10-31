@@ -14,16 +14,27 @@ export type SettingsPanelProps = {
 export const SettingsPanel = ({ snap, onChanged }: SettingsPanelProps) => {
   const saved = snap.config?.upstreamProxy ?? '';
   const [upstream, setUpstream] = useState(saved);
+  const [error, setError] = useState('');
   useEffect(() => setUpstream(saved), [saved]);
 
   const save = async (patch: Record<string, unknown>) => {
-    await api.saveConfig(patch).catch(() => undefined);
-    onChanged();
+    setError('');
+    try {
+      await api.saveConfig(patch);
+      onChanged();
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    }
   };
 
   const hosts = snap.hosts;
   return (
     <Panel>
+      {error ? (
+        <p className="text-xs text-warn" role="alert">
+          {error}
+        </p>
+      ) : null}
       <PanelHead>
         <PanelTitle>Дополнительно</PanelTitle>
         <PanelHint>{hosts === null ? 'через прокси идёт всё' : `через прокси: ${hosts.length} хост.`}</PanelHint>
@@ -38,7 +49,7 @@ export const SettingsPanel = ({ snap, onChanged }: SettingsPanelProps) => {
             onClick={() =>
               window.confirm(
                 'Сертификат будет удалён, приложение закроется. При следующем запуске создастся новый и его нужно будет установить.',
-              ) && void api.certReset()
+              ) && void api.certReset().catch((e: Error) => setError(e.message))
             }
           >
             Перевыпустить
