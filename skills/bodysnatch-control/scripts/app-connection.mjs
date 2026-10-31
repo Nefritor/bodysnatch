@@ -93,6 +93,11 @@ async function launch(executable, dataDir, explicitProfile) {
     detached: true,
     stdio: 'ignore',
   });
+  const result = { launcherOnly: !!bundle, exited: false, code: null };
+  child.once('exit', (code) => {
+    result.exited = true;
+    result.code = code;
+  });
   await new Promise((resolve, reject) => {
     child.once('error', reject);
     if (bundle)
@@ -102,6 +107,7 @@ async function launch(executable, dataDir, explicitProfile) {
     else child.once('spawn', resolve);
   });
   child.unref();
+  return result;
 }
 
 export async function connectApp({
@@ -119,7 +125,10 @@ export async function connectApp({
   }
   if (quitting) return null;
   if (!autoStart) throw new Error('приложение не запущено или выбран другой профиль (--data-dir)');
-  await launch(findApp(appPath), dataDir, explicitProfile);
+  const executable = findApp(appPath);
+  let launched = await launch(executable, dataDir, explicitProfile);
+  let attempts = 1;
+  let launchedAt = Date.now();
   const deadline = Date.now() + startTimeout;
   while (Date.now() < deadline) {
     await delay(200);
@@ -128,8 +137,19 @@ export async function connectApp({
     } catch (error) {
       if (!unavailable(error)) throw error;
     }
+    if (launched.exited && launched.code !== 0)
+      throw new Error('BodySnatch завершился при запуске; проверьте shell.log');
+    // При совпадении с завершающимся экземпляром single-instance lock может
+    // отклонить новый процесс до снятия старой блокировки. Повторяем один раз.
+    const declined = launched.launcherOnly ? Date.now() - launchedAt > 2000 : launched.exited;
+    if (declined && attempts < 2) {
+      await delay(1000);
+      launched = await launch(executable, dataDir, explicitProfile);
+      launchedAt = Date.now();
+      attempts += 1;
+    }
   }
   throw new Error(
-    'BodySnatch запущен, но API не появился вовремя; проверьте версию 0.1.5+, профиль и shell.log. Повторный запуск автоматически не выполняется',
+    'API BodySnatch не появился вовремя; проверьте версию 0.1.5+, профиль и shell.log. Дальнейшие попытки запуска не выполняются',
   );
 }

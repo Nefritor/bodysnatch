@@ -376,7 +376,15 @@ export function makeApi(engine) {
         const r = await platform.certUninstall({ pem: ca.certPem, file: ca.certPath });
         engine.invalidateTrust();
         engine.events.emit('state');
-        return { status: 200, json: { ok: !!r.ok, trusted: await engine.certTrusted(0) } };
+        const trusted = await engine.certTrusted(0);
+        return {
+          status: 200,
+          json: {
+            ok: !!r.ok && !trusted,
+            trusted,
+            error: r.error || (trusted ? 'сертификат всё ещё остаётся доверенным в системе' : undefined),
+          },
+        };
       }
 
       case 'POST /api/cert/reset': {

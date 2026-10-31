@@ -7,6 +7,7 @@
  */
 import os from 'node:os';
 import path from 'node:path';
+import fs from 'node:fs';
 import { run, thumbprintOf } from './common.mjs';
 
 export const id = 'darwin';
@@ -64,10 +65,11 @@ export async function proxyState() {
       names.map(async (name) => {
         const auto = await run('networksetup', ['-getautoproxyurl', name]);
         if (!auto.ok) throw new Error('не удалось прочитать PAC службы ' + name);
+        const storedUrl = field(auto.stdout, 'URL');
         return {
           name,
-          autoConfigUrl: field(auto.stdout, 'URL'),
-          pacUrl: field(auto.stdout, 'Enabled') === 'Yes' ? field(auto.stdout, 'URL') : '',
+          autoConfigUrl: storedUrl === '(null)' ? '' : storedUrl,
+          pacUrl: field(auto.stdout, 'Enabled') === 'Yes' && storedUrl !== '(null)' ? storedUrl : '',
         };
       }),
     ),
@@ -150,7 +152,20 @@ export async function openProxySettings() {
 }
 
 // ── сертификат ──────────────────────────────────────────────────────────────
-export async function certTrusted({ file }) {
+export async function certTrusted({ pem, file }) {
+  const fingerprint = thumbprintOf(pem || fs.readFileSync(file, 'utf8'));
+  // verify-cert может продолжать использовать закэшированное доверие после удаления CA.
+  // Проверяем наличие именно этого сертификата, не другого корня с тем же commonName.
+  const installed = await run('security', [
+    'find-certificate',
+    '-a',
+    '-Z',
+    '-c',
+    'BodySnatch Desktop Root CA',
+    KEYCHAIN,
+    '/Library/Keychains/System.keychain',
+  ]);
+  if (!installed.ok || !new RegExp(`^SHA-1 hash:\\s*${fingerprint}\\s*$`, 'm').test(installed.stdout)) return false;
   const r = await run('security', ['verify-cert', '-c', file, '-L', '-p', 'basic']);
   return r.ok;
 }
@@ -180,7 +195,12 @@ export async function certInstall({ file }) {
 
 /** Убрать сертификат и его доверие (системное окно подтверждения может появиться снова). */
 export async function certUninstall({ pem, file }) {
-  await run('security', ['remove-trusted-cert', file], { timeout: 180000 });
-  const r = await run('security', ['delete-certificate', '-Z', thumbprintOf(pem), KEYCHAIN]);
-  return { ok: r.ok };
+  const trusted = await certTrusted({ pem, file });
+  const removed = await run('security', ['remove-trusted-cert', file], { timeout: 180000 });
+  const noTrust = /-25300|could not be found|not found|no trust settings/i.test(removed.stderr);
+  if (!removed.ok && (trusted || !noTrust || /-128|cancelled|canceled|denied/i.test(removed.stderr)))
+    return { ok: false, error: removed.stderr.trim().slice(0, 200) || 'не удалось снять доверие сертификату' };
+  const r = await run('security', ['delete-certificate', '-Z', thumbprintOf(pem), KEYCHAIN], { timeout: 180000 });
+  const absent = !trusted && /-25300|could not be found|item not found/i.test(r.stderr);
+  return { ok: r.ok || absent, error: r.ok || absent ? undefined : r.stderr.trim().slice(0, 200) };
 }

@@ -39,7 +39,7 @@ try {
   if (normalized.origin !== 'http://127.0.0.1' || !normalized.pathname.startsWith('/api/'))
     throw new Error('некорректный маршрут');
   const raw = bodyFile ? fs.readFileSync(bodyFile, 'utf8') : json || '{}';
-  const body = JSON.parse(raw);
+  const body = JSON.parse(raw.replace(/^\uFEFF/, ''));
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('тело должно быть JSON-объектом');
   const discovery = await connectApp({
     dataDir,

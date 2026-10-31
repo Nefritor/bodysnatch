@@ -82,7 +82,8 @@ export function createProxy({
     let ctx = contexts.get(host);
     if (!ctx) {
       const leaf = leafFor(host);
-      ctx = tls.createSecureContext({ key: leaf.keyPem, cert: leaf.certPem });
+      // Chrome с SPKI-флагом должен видеть корень в цепочке даже до установки CA в ОС.
+      ctx = tls.createSecureContext({ key: leaf.keyPem, cert: leaf.certPem + ca.certPem });
       if (contexts.size >= 2000) contexts.clear();
       contexts.set(host, ctx);
     }
@@ -360,7 +361,10 @@ export function createProxy({
       ALPNProtocols: ['http/1.1'],
       requestCert: false,
     });
-    tlsSocket.on('error', () => socket.destroy());
+    tlsSocket.on('error', (error) => {
+      record({ via: 'error', status: 502, url: `https://${host}/`, note: 'TLS: ' + error.message });
+      socket.destroy();
+    });
     if (head && head.length) tlsSocket.unshift(head);
     track(tlsSocket, sockets);
     inner.emit('connection', tlsSocket);

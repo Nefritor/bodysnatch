@@ -33,7 +33,7 @@ export const api = {
   log: (n = 200) =>
     fetch(`/api/log?n=${n}`, { cache: 'no-store' }).then((r) => r.json() as Promise<{ ok: boolean; log: LogEntry[] }>),
   clearLog: () => post<{ ok: boolean }>('/api/log/clear', {}),
-  setEnabled: (enabled: boolean) => post<{ ok: boolean; enabled: boolean }>('/api/enabled', { enabled }),
+  setEnabled: (enabled: boolean) => post<{ ok: boolean; enabled: boolean }>('/api/enabled', { enabled }, 200000),
   saveConfig: (config: unknown) => post<{ ok: boolean }>('/api/config', { config }),
   saveSite: (index: number, patch: unknown) => post<{ ok: boolean }>('/api/site', { index, patch }),
   roots: (action: 'add' | 'remove' | 'replace', path: string, replacement?: string) =>
@@ -45,10 +45,11 @@ export const api = {
   // системное окно подтверждения может ждать пользователя долго
   certInstall: () =>
     post<{ ok: boolean; trusted: boolean; error?: string; manual?: string }>('/api/cert/install', {}, 240000),
-  certReset: () => post<{ ok: boolean; restart?: boolean }>('/api/cert/reset', {}),
+  certReset: () => post<{ ok: boolean; restart?: boolean }>('/api/cert/reset', {}, 240000),
   proxyOn: () =>
     post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/on', {}, 200000),
-  proxyOff: () => post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/off', {}),
+  proxyOff: () =>
+    post<{ ok: boolean; error?: string; systemProxy: Snapshot['systemProxy'] }>('/api/proxy/off', {}, 200000),
   openBrowser: () => post<{ ok: boolean; browser?: string; error?: string }>('/api/browser/open', {}),
   openSettings: () => post<{ ok: boolean }>('/api/open-settings', {}),
   quit: () => post<{ ok: boolean }>('/api/quit', {}),

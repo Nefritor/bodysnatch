@@ -91,6 +91,10 @@ function createEngineHost({ log, getWindow, onQuit, onCrash, onUpdate, onWindow 
   return {
     /** Запустить воркер и дождаться готовности: { port, pacUrl }. */
     async start(engineOptions, devApi) {
+      // Keychain может ждать подтверждения пользователя. Таймаут запуска worker
+      // начинается после этого запроса, чтобы не оставлять отвергнутый Promise без обработчика.
+      log('проверяем доступность защищённого хранилища ОС');
+      const protector = await safeStorage.isAsyncEncryptionAvailable();
       worker = utilityProcess.fork(path.join(__dirname, 'engine-worker.cjs'), [], {
         serviceName: 'BodySnatch engine',
         stdio: 'pipe',
@@ -136,7 +140,7 @@ function createEngineHost({ log, getWindow, onQuit, onCrash, onUpdate, onWindow 
       });
       worker.postMessage({
         t: 'init',
-        opts: { protector: await safeStorage.isAsyncEncryptionAvailable(), devApi, engine: engineOptions },
+        opts: { protector, devApi, engine: engineOptions },
       });
       return ready;
     },

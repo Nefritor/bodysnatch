@@ -1,4 +1,4 @@
 interface:
   display_name: 'BodySnatch Control'
-  short_description: '���������� BodySnatch ����� ��������� API ��� ����'
-  default_prompt: '�������� BodySnatch ����� ��������� API � ������� ��������� �������.'
+  short_description: 'Автозапуск и управление BodySnatch через локальный API'
+  default_prompt: 'Используй $bodysnatch-control для запуска BodySnatch и управления через API; проверь результат команды.'
